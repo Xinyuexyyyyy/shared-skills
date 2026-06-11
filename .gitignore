@@ -1,0 +1,33 @@
+# 依赖（可由 package.json / requirements 重建，绝不入库）
+node_modules/
+**/node_modules/
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# 系统与编辑器
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# 密钥与本地配置（防泄漏）
+.env
+*.env
+*.key
+*.pem
+credentials*
+*token*.json
+
+# 临时产物
+*.log
+tmp/
+.cache/
+
+# 独立姊妹仓(有自己的 origin,不嵌入本仓)
+harvest-tool/

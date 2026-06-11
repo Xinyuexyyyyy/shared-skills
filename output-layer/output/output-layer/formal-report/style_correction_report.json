@@ -1,0 +1,50 @@
+{
+  "source_path": "/Users/sure/shared-skills/output-layer/samples/formal-report.md",
+  "profile": "formal-zh",
+  "style_correction": {
+    "enabled": true,
+    "preset": "explainer-zh-v1",
+    "spec": "style-correction-v1.md",
+    "applied_notes": [],
+    "changed": true,
+    "findings": [
+      {
+        "kind": "weak_explicit_judgment",
+        "severity": "low",
+        "message": "正文里缺少明确判断句，容易只解释现象，不落判断。"
+      }
+    ],
+    "finding_rules": {
+      "weak_opener": {
+        "prefixes": "需要注意的是，,值得注意的是，,某种程度上，,从某种意义上说，,说到底，,归根结底，",
+        "severity": "medium",
+        "message": "开头先用了套话，结论起得偏慢。",
+        "enabled": "on"
+      },
+      "repeated_template_phrases": {
+        "phrases": "需要注意的是,值得注意的是,某种程度上,从某种意义上说,换句话说,归根结底",
+        "threshold": "2",
+        "severity": "medium",
+        "message": "模板化表达重复出现，容易带出 AI 味。",
+        "enabled": "on"
+      },
+      "weak_explicit_judgment": {
+        "markers": "我的判断是,我判断,核心是,关键是,关键不是,真正的问题,问题在于,本质上,更准确地说",
+        "severity": "low",
+        "message": "正文里缺少明确判断句，容易只解释现象，不落判断。",
+        "enabled": "on"
+      }
+    },
+    "summary": {
+      "count": 1,
+      "by_kind": {
+        "weak_explicit_judgment": 1
+      },
+      "top_kind": "weak_explicit_judgment",
+      "top_severity": "low",
+      "next_actions": [
+        "先补明确判断句，把结论前移。"
+      ]
+    }
+  }
+}
