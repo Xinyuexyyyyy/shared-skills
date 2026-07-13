@@ -1,0 +1,135 @@
+name: formal-docx-quality-zh-v1
+description: 中文正式 docx 输出质量规范层第一版
+version: 0.1.0
+scope:
+  input: markdown
+  output: docx
+  language: zh-CN
+  stage: before_docx_render
+quality_dimensions:
+  formality:
+    purpose: 规范成书面、正式、克制的表达
+    blocker:
+      - 明显口语化、营销化、情绪化或 AI 模板化表达影响正式交付
+      - 同一对象名称前后不一致，导致指代不清
+    warning:
+      - 重复使用低信息模板句
+      - 术语首次出现缺少必要说明
+  logic:
+    purpose: 检查结论、依据、条件和行动之间是否对应
+    blocker:
+      - 有结论但没有依据
+      - 前后定义、数字、对象或时间范围互相矛盾
+      - 关键行动项缺少对象、条件或下一步
+    warning:
+      - 连接词较多但推理关系不清
+      - 重要判断缺少边界
+  structure:
+    purpose: 检查标题层级和章节职责
+    blocker:
+      - 不止一个总标题
+      - 标题层级跳跃或章节标题与正文不匹配
+      - 大量列表堆叠但没有解释或结论
+    warning:
+      - 一级标题职责不清
+      - 表格、列表、正文混用
+  completeness:
+    purpose: 按文档类型检查必要要素是否齐全
+    common_required:
+      - 文档目的或交付对象
+      - 背景或问题定义
+      - 核心内容或方案
+      - 依据、边界或约束
+      - 结论、行动项或使用方式
+    doc_type_required:
+      abstract:
+        - 对象
+        - 方法或路径
+        - 核心结果
+        - 意义或应用边界
+      manual:
+        - 适用对象
+        - 前置条件
+        - 步骤
+        - 注意事项
+        - 异常处理
+      proposal:
+        - 立项依据
+        - 研究内容或目标
+        - 创新点
+        - 可行性
+        - 研究基础
+        - 预期成果
+      paper_like:
+        - 问题
+        - 背景或相关工作
+        - 方法
+        - 结果
+        - 讨论或局限
+      policy:
+        - 适用范围
+        - 定义
+        - 职责
+        - 流程
+        - 例外
+        - 执行与更新机制
+  docx_readiness:
+    purpose: 检查 Markdown 到 docx 的可交付性
+    blocker:
+      - 未闭合代码块
+      - 裸 HTML 标签进入正文
+      - Markdown 控制符残留影响阅读
+      - 关键图片、表格或附件缺少说明
+    warning:
+      - 表格过宽或单元格内容过长
+      - 裸 URL 直接作为正文
+findings:
+  weak_opener:
+    enabled: on
+    prefixes: 需要注意的是，,值得注意的是，,某种程度上，,从某种意义上说，,说到底，,归根结底，,在当今快速发展的时代，,随着社会的不断发展，
+    severity: medium
+    message: 开头先用了套话，正式文档应更早交代对象、目的或结论。
+  repeated_template_phrases:
+    enabled: on
+    phrases: 需要注意的是,值得注意的是,某种程度上,从某种意义上说,换句话说,归根结底,综上所述,总而言之,不可否认的是
+    threshold: 2
+    severity: medium
+    message: 模板化表达重复出现，容易削弱正式文档的可信度。
+  weak_explicit_judgment:
+    enabled: on
+    markers: 本文认为,本报告认为,本项目拟,核心问题是,关键在于,主要结论是,研究目标是,适用范围是,实施路径是,建议如下
+    severity: low
+    message: 正文里缺少明确判断、目标或行动句，容易只描述现象。
+rewrite_policy:
+  preserve_facts: true
+  preserve_claims: true
+  no_new_evidence: true
+  ask_user_when_missing_facts: true
+rewrites:
+  paragraph_prefix:
+    需要注意的是，: <DELETE>
+    值得注意的是，: <DELETE>
+    某种程度上，: <DELETE>
+    从某种意义上说，: <DELETE>
+    说到底，: <DELETE>
+    归根结底，: <DELETE>
+    在当今快速发展的时代，: <DELETE>
+    随着社会的不断发展，: <DELETE>
+  sentence:
+    这是一项革命性的: 这是一项重要的
+    彻底解决: 改善
+    全面赋能: 支持
+report_shape:
+  status_values:
+    - pass
+    - draft_only
+    - blocked
+  required_fields:
+    - status
+    - doc_type
+    - summary
+    - blockers
+    - warnings
+    - suggestions
+    - render_notes
+    - next_action

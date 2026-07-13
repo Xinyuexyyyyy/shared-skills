@@ -284,3 +284,9 @@ python3 -m unittest skills.idea-to-research.tests.test_pipeline_smoke
 - `social-research` 能落完整社会调研包
 - 模糊输入会停在 `needs-clarification`，不误闯下游
 - smoke test 通过，说明主流程最小链路没断
+
+---
+
+## 产出去向
+
+产出物落盘与命名遵循全局规范 `~/shared-skills/STORAGE-SPEC.md`：产出可存任何位置，但每件正式产出须在所属任务 `tasks/<任务>/artifacts.md` 登记坐标；用语义名不用纯时间戳；同主题反复生成覆盖或归档旧版。

@@ -109,6 +109,103 @@ python3 skills/output-layer/scripts/render_markdown_output.py \
 - `plain-explainer-zh-v1`：更朴素、少评论腔
 - `business-commentary-zh-v1`：更强调判断和评论口气
 
+## DOCX 质量层
+
+正式 `docx` 输出前可以打开两类质量报告：
+
+- `--docx-quality-check`：确定性检查，覆盖标题层级、裸 HTML、参考资料区、图表说明等。
+- `--assisted-quality-review`：中文正式写作方法论辅助审阅，覆盖申请类三问结构、技术说明链条、摘要四要素、行动项完整性、说明书任务链。
+
+质量层会先做轻量文档类型识别。显式 `doc_type` 优先；未声明时，会根据标题、章节和正文信号识别 `runtime_record`、`meeting_note`、`content_article` 等类型，避免把运行记录、会议纪要或内容稿全部误判成正式报告。规则见 `docs/document-type-detection-v1.md`。
+
+草稿阶段推荐只写报告、不阻断导出：
+
+```bash
+python3 skills/output-layer/scripts/render_markdown_output.py \
+  skills/output-layer/samples/source.md \
+  --profile formal-zh \
+  --to markdown,docx \
+  --docx-quality-check auto \
+  --assisted-quality-review auto
+```
+
+交付前可以改成 strict：
+
+```bash
+python3 skills/output-layer/scripts/render_markdown_output.py \
+  skills/output-layer/samples/source.md \
+  --profile formal-zh \
+  --to markdown,docx \
+  --docx-quality-check strict \
+  --assisted-quality-review strict
+```
+
+`auto` 会继续生成 `docx`；`strict` 遇到阻断结构问题或需要修正文稿的问题时，会跳过 `docx` 并留下报告。报告文件：
+
+- `docx_quality_report.json/md`
+- `assisted_quality_report.json/md`
+
+## 正式扩写层
+
+如果输入太短、太口语或重复空泛，可以先单独跑正式扩写层，再把扩写稿送入质量门：
+
+```bash
+python3 skills/output-layer/scripts/expand_formal_markdown.py \
+  skills/output-layer/tests/fixtures/formal-expansion/too-short-input.md \
+  --outdir /tmp/formal-expansion-demo
+```
+
+输出：
+
+- `output.expanded.md`
+- `formal_expansion_report.json`
+- `formal_expansion_report.md`
+
+当前模式：
+
+- `structured`：默认，主动补正式文档骨架。
+- `conservative`：保守改写，适合已有草稿。
+- `off`：关闭扩写。
+
+第一版不调用 LLM，不编造事实；缺事实的位置会进入 `formal_expansion_report` 的 `blocked_expansions`。
+
+也可以直接接入主渲染链：
+
+```bash
+python3 skills/output-layer/scripts/render_markdown_output.py \
+  skills/output-layer/tests/fixtures/formal-expansion/too-short-input.md \
+  --profile formal-zh \
+  --to markdown,docx \
+  --formal-expansion structured \
+  --docx-quality-check auto \
+  --assisted-quality-review auto
+```
+
+这条链路会先生成 `output.expanded.md`，再用扩写后的正文继续生成 `output.clean.md`、质量报告和 `output.docx`。
+
+如果希望质量报告直接推动下一稿，可以打开确定性修订层：
+
+```bash
+python3 skills/output-layer/scripts/render_markdown_output.py \
+  skills/output-layer/samples/source.md \
+  --profile formal-zh \
+  --to markdown,docx \
+  --docx-quality-check auto \
+  --formal-revision auto
+```
+
+它会生成 `output.revised.md` 和 `formal_revision_report.json/md`，只补结构占位和参考资料占位，不编造事实。规则见 `docs/formal-revision-layer-v1.md`。
+
+主链会在 `index.md` 和 `manifest.json` 中写入 `Delivery Recommendation`：
+
+- `deliverable`：未发现阻断项，可作为当前版本交付。
+- `deliverable_with_review`：文件已生成，结构可交付，但正式交付前需人工复核事实口径。
+- `needs_content_revision`：文件已生成，但正文结构或表达仍需修订。
+- `needs_input`：文件已生成，但关键信息不足，需补事实、依据或人工确认项。
+- `blocked`：正式交付已阻断，需要先处理质量门或渲染问题。
+
+正式交付前优先看 `index.md` 的 `Delivery Recommendation`，再按需打开具体报告。
+
 ## PPT 输出
 
 先看说明：

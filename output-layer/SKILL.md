@@ -40,6 +40,8 @@ existing text
 
 ## Default Deliverables
 
+> **出口断言(输出层验证,交付前必过)**:成品交给用户前确认——文件**真生成**(路径存在)、**能打开**(格式有效)、**素材可溯源**(锚点/来源不凭空)。硬断言:声明"已导出/已生成"必须 `ls` 确认文件在、非空;软建议:表达是否更顺,提醒可继续。详见全局 `~/.claude/CLAUDE.md`「验证层」。
+
 Default document package:
 
 - `output.clean.md`
@@ -54,6 +56,25 @@ Optional deliverables:
 - PPT bridge package: `consensus.md / research.md / storyboard.md / handoff.md / bridge_manifest.json`.
 - Draw.io diagram: `*.drawio`, defaulting to `task-draft/drawio-samples/`.
 
+## Mandatory Version Archiving
+
+Output Layer must keep output directories readable.
+
+Whenever this skill or an output-generation subroute creates a new versioned file (`v1`, `v2`, `v15`, date-versioned names, etc.) in an existing output directory, archive older files with the same stable basename immediately after generation.
+
+Rules:
+
+- Output filenames must contain only one main version token. Do not create names like `script-v4-ppt-v11.pdf` or `report-v10-v11fixed.docx`.
+- If an output needs to mention which PPT/report/source version it corresponds to, put that relationship in `manifest.json`, `index.md`, or the file body, not in the filename.
+- Main directories keep only the latest same-basename version plus active source files/scripts.
+- Same-basename comparison crosses formats: if `script-v5.md` is newest, older `script-v4.html` / `script-v4.pdf` are old versions too.
+- Older same-basename versions move into the same directory's `_archive/` subdirectory.
+- Archiving is a move, never deletion.
+- Existing `_archive/` contents are not reorganized, overwritten, or deleted.
+- For Daily Work, use `/Users/sure/Daily Work/scripts/archive_old_versions.py <directory>` after writing generated files, unless a Claude hook has already done it.
+- If a user asks for dry-run first, run with `--dry-run` and wait before moving.
+- Do not ask the user to run the archive command manually as part of normal output-layer delivery.
+
 ## Output Routes
 
 | Need | Route | Output |
@@ -62,6 +83,7 @@ Optional deliverables:
 | 去 AI 味 / humanize / 太像 AI 了 | `humanizer` skill (独立引擎) | 30 条 AI 模式审计 + 定向改写 |
 | Style diagnosis only | `output-style-checker` | issues + pass/fail + suggested next step |
 | Formal Markdown/docx/pdf package | `scripts/render_markdown_output.py` | clean / obsidian / docx / pdf / manifest |
+| Formal expansion for short/informal drafts | `scripts/expand_formal_markdown.py` | `output.expanded.md` + expansion report |
 | Quick smoke run | `scripts/render_quick.py` | sample formal output |
 | PPT upstream handoff | `scripts/render_ppt_output.py` | PPT bridge package |
 | Compact diagram | `drawio-diagram-agent` | `.drawio` flowchart / route map / architecture map |
@@ -204,7 +226,16 @@ Rules:
 - Default package is clean + Obsidian + docx + manifest.
 - PDF is optional and may be skipped if tooling is missing.
 - Style correction is optional; show the preset before applying it.
+- For formal `docx`, quality layers are optional and default off:
+  - `--docx-quality-check off|auto|strict` writes deterministic readiness reports.
+  - `--assisted-quality-review off|auto|strict` writes methodology-grounded review reports.
+  - Use `auto` for drafts; use `strict` before formal handoff when the user wants quality gates.
+- Quality layers first infer document type. `content_article`, `meeting_note`, and `runtime_record` avoid the full `formal_report` rule set; explicit `doc_type` in frontmatter still wins.
+- If the source is too short, oral, or repetitive, use `--formal-expansion conservative|structured` or run `scripts/expand_formal_markdown.py` first. It writes `output.expanded.md` plus `formal_expansion_report.json/md`; it does not invent facts or replace the quality gates.
+- If the user wants the quality report to drive the next draft, use `--formal-revision auto`. It writes `output.revised.md` plus `formal_revision_report.json/md`; it only adds structural placeholders and reference placeholders, never facts or citations.
+- For formal handoff, check `index.md` first. Its `Delivery Recommendation` summarizes whether the output is `deliverable`, `deliverable_with_review`, `needs_content_revision`, `needs_input`, or `blocked`, and lists priority actions before the detailed reports.
 - Keep facts and conclusions unchanged during style correction.
+- After exporting versioned document files into an existing directory, archive older same-basename versions before final response.
 
 ### PPT Route
 
@@ -215,6 +246,7 @@ Rules:
 - Default to `stage=upstream` unless the downstream PPT project is already prepared.
 - Use presets only to fill defaults; explicit user values win.
 - Read `docs/ppt-output-protocol.md` or `docs/ppt-output-quickstart.md` before changing PPT behavior.
+- After exporting versioned PPT or handoff files into an existing directory, archive older same-basename versions before final response.
 
 ### Draw.io Route
 
@@ -257,6 +289,7 @@ Before generating:
 - Generated document runs go under `output/output-layer/<run_id>/`.
 - Draw.io samples default to `task-draft/drawio-samples/`.
 - Do not overwrite existing outputs without confirmation.
+- Do not leave old same-basename version files in the main output directory; move them to `_archive/`.
 - Always report generated paths in the final response.
 - Do not move or delete old runs unless the user asks for cleanup.
 
@@ -318,3 +351,9 @@ Always tell the user:
 - What was skipped and why.
 - How to verify the result.
 - 目录已自动整理：指向整理后的干净主题夹路径（如 `output/output-layer/<主题>/`），而不是带时间戳的原始 run 目录。
+
+---
+
+## 产出去向
+
+产出物落盘与命名遵循全局规范 `~/shared-skills/STORAGE-SPEC.md`：产出可存任何位置，但每件正式产出须在所属任务 `tasks/<任务>/artifacts.md` 登记坐标；用语义名不用纯时间戳；同主题反复生成覆盖或归档旧版。

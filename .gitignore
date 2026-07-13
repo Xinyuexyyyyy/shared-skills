@@ -29,5 +29,3 @@ credentials*
 tmp/
 .cache/
 
-# 独立姊妹仓(有自己的 origin,不嵌入本仓)
-harvest-tool/

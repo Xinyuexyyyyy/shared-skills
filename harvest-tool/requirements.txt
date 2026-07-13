@@ -1,0 +1,2 @@
+# Harvest Tool has no third-party Python dependencies.
+# It only requires Python 3.9+ and the GitHub CLI (`gh`) to be installed and authenticated.

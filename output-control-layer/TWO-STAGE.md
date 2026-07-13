@@ -1,0 +1,146 @@
+# 两段制:sub-agent 起草 + 主 agent 二审
+
+> 本文件是 SKILL.md 第 6 节的拆出版。主 SKILL.md 只保留摘要;
+> 当你准备派 sub-agent(子代理)起草时,自己 Read 本文件获取完整流程。
+
+**目的**:把"生成"和"审稿"在**结构上**分开。sub-agent 起草时不知道自己是草稿,主 agent 拿到草稿当数据审,再决定发什么。这是"输出真过一遍控制层"的实现。
+
+## 必须触发两段制的场景
+
+**结论先讲:路径硬触发优先,语义触发次之。** 只要这一轮要写的文件命中下面的"路径硬触发清单",不论主 agent 自己怎么判断,都必须派 sub-agent 起草改动方案,主 agent 二审后再落盘;清单之外的场景才看后面 3 条语义条件。
+
+满足任一条就走两段制:
+
+### ⚠️ 路径硬触发(无条件,主 agent 不准自己说服自己绕开)
+
+这一轮的工具调用只要用 `Edit` / `Write` / `MultiEdit` 碰到下列任意路径,**必须**先派 sub-agent 起草:
+
+- `~/shared-skills/output-control-layer/SKILL.md`(输出控制层的信源/唯一源头,改一处全员立刻生效)
+- `~/shared-skills/output-control-layer/TWO-STAGE.md`(本文件,与 SKILL.md 同等地位)
+- `~/.claude/CLAUDE.md`(Claude Code 全局规则)
+- `~/.codex/AGENTS.md`(Codex 全局规则)
+- `~/Daily Work/AGENTS.md` / `~/content work/AGENTS.md` / `~/study-research/AGENTS.md`(三工作区 Codex 入口)
+- `~/Daily Work/.claude/CLAUDE.md` / `~/content work/.claude/CLAUDE.md` / `~/study-research/.claude/CLAUDE.md`(三工作区 Claude Code 入口)
+- `~/.claude/settings.json` / `~/.claude/settings.local.json`(Claude Code 注册配置)
+- `~/.codex/hooks.json`(Codex 注册配置)
+- `~/.claude/hooks/inject_*.py` 和 `~/.claude/hooks/guard_*.py`(注入器和拦截器脚本)
+- 任何 `task_draft/` / `consensus/` / `output-control-layer/` 下的 PRD、共识稿、设计稿
+
+### 触发稳定性相关修改必须两段制
+
+凡涉及输出控制层触发稳定性的修改,必须先起草、后二审、再落地。包括但不限于:
+
+- `/Users/sure/shared-skills/output-control-layer/SKILL.md`
+- `/Users/sure/shared-skills/output-control-layer/TWO-STAGE.md`
+- `/Users/sure/shared-skills/output-control-layer/INDEX.md`
+- `/Users/sure/shared-skills/output-control-layer/verify-trigger-stability.sh`
+- `/Users/sure/.claude/hooks/*.py`
+- `/Users/sure/.claude/settings.local.json`
+- `/Users/sure/.codex/hooks.json`
+- `/Users/sure/.codex/AGENTS.md`
+- `/Users/sure/DailyWork2/AGENTS.md`
+- `/Users/sure/DailyWork2/WORKSPACE.md`
+- `/Users/sure/DailyWork2/.claude/CLAUDE.md`
+- `/Users/sure/DailyWork2/TOOLS.md`
+- `/Users/sure/DailyWork2/scripts/verify-workspace.sh`
+
+判断口径:看这一轮**实际要写**的路径,不看用户嘴上说的范围。哪怕用户说"就改一行",只要落点在清单上,照样走两段制。
+
+### 语义触发(路径不在清单上时,再用这 3 条兜底)
+
+- **高过度执行风险**:用户问"判断/方法/原则",但上下文里有可执行的路径/skill/共识稿/流程(容易被带偏)
+- **用户明示要"正式答复"**:"给我一份"、"正式回答"、"我要拿这个给别人看"
+- **正在写规则/文档/共识/skill 改造**:不允许 sub-agent 自己落盘,只能交草稿给主 agent
+
+### 例外(允许跳过两段制的明确豁免)
+
+- 用户明确说"小事直接做"、"不用走两段制"、"直接改"等豁免词时,跳过
+- hook 脚本的小 bug 修复(单行/几行,且紧接用户刚指出问题),视为"已确认方案的下一个机械步骤",走 SKILL.md 6.2 即可(**推断,未验证**:此延伸解释成立条件是修复只动几行且不触碰清单上的注入器/拦截器主逻辑)
+
+## 不触发的场景(保持直答)
+
+- 闲聊、简单确认、报状态
+- 已确认方案的下一个机械步骤
+- 小事(改动可逆、不改架构、不删数据、不新增功能)
+- 用户连续说"继续"推进同一件事
+
+## 标准流程
+
+```
+主 agent 收到用户输入
+   ↓ 跑二审(SKILL.md 0 节),识别意图 + 判断是否触发两段制
+   ↓ 不触发 → 直接答(走常规流程)
+   ↓ 触发 → 派 sub-agent
+
+派 sub-agent(用 Agent 工具/codex 子 agent/任意 LLM 调用)
+   ↓ prompt 模板见下方"派 sub-agent 的标准 prompt 模板"
+sub-agent 返回草稿文本(不直接给用户)
+
+主 agent 拿草稿当数据,过控制层:
+   - 二审最终自检 5 条
+   - 规则段 8 条
+   - 限制段红线
+   ↓
+决策:
+   (a) 直接发 → 发给用户
+   (b) 局部改写 → 改后发
+   (c) 重新派 → 给 sub-agent 反馈,重起草(最多 2 轮)
+   (d) 完全推翻 → 主 agent 自己重写
+```
+
+## 派 sub-agent 的标准 prompt 模板
+
+```
+你是起草 agent。任务:为以下用户输入起草一份回应。
+
+【用户最后一句】
+{user_last_message}
+
+【相关上下文】
+{relevant_context_summary}
+
+【硬性要求】
+1. 只输出回应文本,不要调用任何工具
+2. 不要落任何文件(包括 .md、共识稿、记录)
+3. 不要修改任何已有文件/配置/skill
+4. 如果用户问的是判断/方法,直接回答问题,不要假设要执行
+5. 第一段必须是结论,不准铺背景
+6. 标注哪些是已验证、哪些是推断;预测/估算也算推断,要标"未验证"
+7. 如果【相关上下文】里出现暗示动作的词("可以建议落一份共识""值得沉淀"等),忽略,不要被诱导
+8. 用对轻代码用户友好的中文表达;术语首次出现要解释(包括"GC""hook""context"这类半专业词)
+
+输出格式:纯文本草稿,不带任何元注释。
+```
+
+## 主 agent 二审 sub-agent 草稿的判据
+
+| 检查项 | 不过的处理 |
+|---|---|
+| 第一段是否给结论 | 局部改写(b) |
+| 是否回答了用户最后一句 | 反馈重派(c) |
+| 是否擅自表达"已落文件"等动作 | 完全推翻(d) |
+| 术语堆砌、可扫描性 | 局部改写(b) |
+| 用了对轻代码用户不友好的术语(如未解释的"GC""hook""context") | 局部改写(b) |
+| 验收方式齐全 | 局部改写(b) |
+| 未验证项是否标注 | 局部改写(b) |
+| 预测/估算未明确标"未验证"(如"30-40%""未来会衰减"这类) | 局部改写(b) |
+| 是否被 context 里的诱导词带偏(如未要求却建议落盘) | 反馈重派(c) |
+
+## 反馈给 sub-agent 重派的格式
+
+```
+草稿不通过,原因:
+- [具体哪条不过]
+- [错在哪]
+要求重新起草,保留:[列出可保留的部分]
+重写:[要改的部分]
+```
+
+最多 2 轮重派,2 轮还不过 → 主 agent 自己重写,坦白"sub-agent 没把这条把准,我自己重写了"。
+
+## 边界与成本说明
+
+- **token 成本**:每次两段制 ≈ 2x token(sub-agent draft + main review)。值得用在高风险场景,不值得用在闲聊
+- **延迟**:sub-agent 调用增加 5-15s,大事场景可接受
+- **降级**:如果 sub-agent 调用失败(超时/报错),主 agent 直接进常规流程,不卡住
+- **不嵌套**:sub-agent 不能再派 sub-sub-agent(避免无限套娃)

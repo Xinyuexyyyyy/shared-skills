@@ -1,0 +1,90 @@
+# ~/.claude/skills 软链快照  2026-06-18 00:47:59
+# 用途: 工作区重整 #2去马甲 的回滚基线。每行 = 入口名<TAB>readlink目标
+# 还原: 对每行 ln -sfn '目标' ~/.claude/skills/'入口名'
+# ---- 原始总数 ----
+COUNT:       84
+# ---- 软链清单(入口 TAB 目标) ----
+academic-deep-research	/Users/sure/study-research/skills/academic-deep-research/
+agent-parent	(实体目录,非软链)
+better-option	/Users/sure/Daily Work/skills/better-option/
+bilibili-video-analyzer	/Users/sure/Daily Work/skills/bilibili-video-analyzer/
+closeout	/Users/sure/shared-skills/closeout/
+cw-closeout	/Users/sure/content work/skills/closeout/
+cw-harvest-tool	/Users/sure/content work/skills/harvest-tool/
+cw-idea-to-research	/Users/sure/content work/skills/idea-to-research/
+cw-interview-writer	/Users/sure/content work/skills/interview-writer/
+cw-output-layer	/Users/sure/content work/skills/output-layer/
+cw-output-polisher	/Users/sure/content work/skills/output-polisher/
+cw-output-style-checker	/Users/sure/content work/skills/output-style-checker/
+cw-research	/Users/sure/content work/skills/research/
+cw-task-analyze	/Users/sure/content work/skills/task-analyze/
+cw-task-decompose	/Users/sure/content work/skills/task-decompose/
+drawio-diagram-agent	/Users/sure/Daily Work/skills/drawio-diagram-agent
+dw-closeout	/Users/sure/Daily Work/skills/closeout/
+dw-harvest-tool	/Users/sure/Daily Work/skills/harvest-tool/
+dw-idea-to-research	/Users/sure/Daily Work/skills/idea-to-research/
+dw-output-layer	/Users/sure/Daily Work/skills/output-layer/
+dw-output-polisher	/Users/sure/Daily Work/skills/output-polisher/
+dw-output-style-checker	/Users/sure/Daily Work/skills/output-style-checker/
+dw-research	/Users/sure/Daily Work/skills/research/
+dw-task-analyze	/Users/sure/Daily Work/skills/task-analyze/
+dw-task-decompose	/Users/sure/Daily Work/skills/task-decompose/
+dw2-better-option	/Users/sure/DailyWork/skills/better-option/
+dw2-bilibili-video-analyzer	/Users/sure/DailyWork/skills/bilibili-video-analyzer/
+dw2-closeout	/Users/sure/DailyWork/skills/closeout/
+dw2-fast-onboard	/Users/sure/DailyWork/skills/fast-onboard/
+dw2-harvest-tool	/Users/sure/DailyWork/skills/harvest-tool/
+dw2-idea-to-research	/Users/sure/DailyWork/skills/idea-to-research/
+dw2-info-head	/Users/sure/DailyWork/skills/info-head/
+dw2-interview-writer	/Users/sure/DailyWork/skills/interview-writer/
+dw2-opencove-remote-deploy	/Users/sure/DailyWork/skills/opencove-remote-deploy/
+dw2-output-layer	/Users/sure/DailyWork/skills/output-layer/
+dw2-output-polisher	/Users/sure/DailyWork/skills/output-polisher/
+dw2-output-style-checker	/Users/sure/DailyWork/skills/output-style-checker/
+dw2-ppt-master	/Users/sure/DailyWork/skills/ppt-master/
+dw2-ppt-master-bridge	/Users/sure/DailyWork/skills/ppt-master-bridge/
+dw2-research	/Users/sure/DailyWork/skills/research/
+dw2-setup-daily-work-skills	/Users/sure/DailyWork/skills/setup-daily-work-skills/
+dw2-skill-dashboard	/Users/sure/DailyWork/skills/skill-dashboard/
+dw2-skill-optimizer	/Users/sure/DailyWork/skills/skill-optimizer/
+dw2-task-analyze	/Users/sure/DailyWork/skills/task-analyze/
+dw2-task-decompose	/Users/sure/DailyWork/skills/task-decompose/
+dw2-wechat-writing-benchmark	/Users/sure/DailyWork/skills/wechat-writing-benchmark/
+fast-onboard	/Users/sure/Daily Work/skills/fast-onboard/
+harvest-tool	/Users/sure/shared-skills/harvest-tool/
+idea-to-research	/Users/sure/shared-skills/idea-to-research/
+info-head	/Users/sure/Daily Work/skills/info-head/
+interview-writer	/Users/sure/Daily Work/skills/interview-writer/
+method-design	/Users/sure/study-research/skills/method-design/
+opencove-remote-deploy	/Users/sure/Daily Work/skills/opencove-remote-deploy/
+output-layer	/Users/sure/shared-skills/output-layer/
+output-polisher	/Users/sure/shared-skills/output-polisher/
+output-style-checker	/Users/sure/shared-skills/output-style-checker/
+paper-composer	/Users/sure/study-research/skills/paper-composer/
+paper-discovery	/Users/sure/study-research/skills/paper-discovery/
+paper-reading	/Users/sure/study-research/skills/paper-reading/
+paper-screening	/Users/sure/study-research/skills/paper-screening/
+ppt-master	/Users/sure/Daily Work/skills/ppt-master/
+ppt-master-bridge	/Users/sure/Daily Work/skills/ppt-master-bridge/
+research	/Users/sure/shared-skills/research/
+research-academic	/Users/sure/study-research/skills/research-academic/
+research-base	/Users/sure/study-research/skills/research-base/
+setup-daily-work-skills	/Users/sure/Daily Work/skills/setup-daily-work-skills/
+skill-dashboard	/Users/sure/Daily Work/skills/skill-dashboard/
+skill-optimizer	/Users/sure/Daily Work/skills/skill-optimizer/
+sr-closeout	/Users/sure/study-research/skills/closeout/
+sr-harvest-tool	/Users/sure/study-research/skills/harvest-tool/
+sr-idea-to-research	/Users/sure/study-research/skills/idea-to-research/
+sr-output-layer	/Users/sure/study-research/skills/output-layer/
+sr-output-polisher	/Users/sure/study-research/skills/output-polisher/
+sr-output-style-checker	/Users/sure/study-research/skills/output-style-checker/
+sr-research	/Users/sure/study-research/skills/research/
+sr-task-analyze	/Users/sure/study-research/skills/task-analyze/
+sr-task-decompose	/Users/sure/study-research/skills/task-decompose/
+supervisor-scout	/Users/sure/study-research/skills/supervisor-scout/
+sure-content-studio	/Users/sure/content work/skills/sure-content-studio/
+survey-writer	/Users/sure/study-research/skills/survey-writer/
+task-analyze	/Users/sure/shared-skills/task-analyze/
+task-decompose	/Users/sure/shared-skills/task-decompose/
+topic-framing	/Users/sure/study-research/skills/topic-framing/
+wechat-writing-benchmark	/Users/sure/Daily Work/skills/wechat-writing-benchmark/

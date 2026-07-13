@@ -1,6 +1,6 @@
 # closeout
 
-任务结束时收尾、总结、建议写记忆。
+任务结束时做轻量、可读的收尾：先说明结果，再给最短验收路径，必要时提示剩余风险或记忆建议。
 
 ## 依赖说明
 
@@ -15,11 +15,11 @@
 - `decisions.md` — 决策记录，追加式写入
 - `lessons.md` — 复盘记录，追加式写入
 
-如果你的工作区没有这些文件，closeout 仍可输出 6 段总结，但记忆更新建议部分将无法使用。
+如果你的工作区没有这些文件，closeout 仍可输出轻量收尾，但记忆更新建议部分将无法使用。
 
-#### 2. 锚点池（Anchor Pool）
+#### 2. 锚点池（Anchor Pool，可选扩展）
 
-本 skill 的锚点扫描功能依赖外部的 `anchor-pool` 目录及其脚本：
+本 skill 的锚点扫描功能不是默认收尾的一部分；只有用户明确要求，或本轮任务涉及锚点/ideas 回看时，才依赖外部的 `anchor-pool` 目录及其脚本：
 
 **必需文件**：
 - `$ANCHOR_POOL_DIR/README.md` — 锚点池使用说明
@@ -37,7 +37,7 @@ export ANCHOR_POOL_DIR="$HOME/anchor-pool"
 **如果没有 anchor-pool**：
 - 锚点扫描部分会跳过
 - ideas 回看功能会跳过
-- 不影响核心的 6 段收尾总结
+- 不影响核心的轻量收尾
 
 **参考样本**：
 - `$ANCHOR_POOL_DIR/seeds/wechat_writing_anchors-2026-05-25.md` — 真实锚点文件示例

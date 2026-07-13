@@ -33,6 +33,7 @@ SRC_DIR = OUTPUT_LAYER_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from artifact_writer import create_run_dir, write_manifest
+from version_hygiene import archive_artifact_dirs, enforce_single_version_names
 
 PPT_BRIDGE = ROOT / "skills" / "ppt-master-bridge" / "scripts" / "bridge.py"
 PPT_MASTER_ROOT = ROOT / "skills" / "ppt-master"
@@ -837,9 +838,16 @@ def main() -> int:
     }
     manifest_path = write_manifest(run_dir, output)
 
+    artifact_paths = [Path(path) for path in output["artifacts"].values() if isinstance(path, str)]
+    artifact_paths.extend([run_dir, project_path, project_path / "sources", project_path / "exports"])
+    enforce_single_version_names([path for path in artifact_paths if path.exists() and path.is_file()])
+    archive_logs = archive_artifact_dirs(artifact_paths)
+
     print(f"run_dir={run_dir}")
     print(f"manifest={manifest_path}")
     print(json.dumps(output, ensure_ascii=False, indent=2))
+    for log in archive_logs:
+        print(f"archive: {log}")
     return 0
 
 

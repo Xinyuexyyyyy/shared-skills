@@ -1,0 +1,160 @@
+# Harvest Tool
+
+把外部知识/工具转化为本地可用能力的系统化流程。
+
+## 触发方式
+
+以下任意一种均可触发：
+
+**直接指定项目：**
+- `帮我抓一下这个项目 https://github.com/xxx/yyy`
+- `harvest https://github.com/xxx/yyy`
+- `这个开源项目不错，帮我调研一下 https://github.com/...`
+
+**主题调研（从 Stage 1 开始）：**
+- `帮我调研一下 [XX方向] 的开源项目`
+- `我想了解一下 [XX领域] 有什么好的开源工具`
+- `harvest --topic [关键词]`，如 `harvest --topic knowledge graph learning`
+- `搜一下 [XX关键词] 相关的开源项目`
+- `帮我找找 [XX需求] 方面的开源方案`
+
+**自然语言描述需求：**
+- `harvest --search [自然语言描述]`
+- `我想做 [XX事情]，有什么开源项目可以参考`
+- `我的需求是 [描述需求]，有相关的开源项目吗`
+
+**交互式引导（说不出具体关键词时）：**
+- `harvest`（单独使用，进入交互引导）
+- `帮我调研个项目`
+- `我想找个工具/库/系统`
+
+## 六阶段流程
+
+```
+输入（URL / 主题 / 描述）
+    ↓
+Stage 1: 发现 →  项目列表（每项附选择理由）
+    ↓
+Stage 2: 评估 →  筛选建议（聚焦"对我有什么用"）
+    ↓
+Stage 3: 选择 →  用户确认（需求驱动，可拆解重组）
+    ↓
+Stage 4: 抓取 →  原始内容（README + 核心文件）
+    ↓
+Stage 5: 分析 →  理解与洞察（停顿汇报，等用户确认）
+    ↓
+Stage 6: 共识 →  项目共识文档（交由项目管理 skill）
+```
+
+## 核心原则
+
+1. **说清楚比堆数量重要** — 每个项目附选择理由
+2. **不要空泛打分** — 评估要定性，含具体推荐理由
+3. **需求驱动** — 根据用户需求匹配，不强制整项目
+4. **Stage 5 必须停顿汇报** — 分析完先给用户汇报，确认后才往下
+5. **Stage 6 输出共识文档** — 不是代码，是项目起点
+
+## Stage 详解
+
+### Stage 1: 发现
+- 数据源：GitHub 搜索 API（主）、SearXNG（备选）
+- 输出：项目列表，含名称/描述/stars/更新时间
+
+### Stage 2: 评估
+- 评估导向：用是目的，不是为了写报告
+- 每个项目必写：做什么/亮点/怎么拆/能否复用/参考价值
+- 不打分，用 star 数量作为客观参考
+
+### Stage 3: 选择
+- 用户说清需求 → 不明确处提问 → 匹配方案 → 用户确认
+- 可拆多个项目各自的部分来组合
+
+### Stage 4: 抓取
+- README + 目录结构 + 核心代码文件
+- 不过度挑食，抓到就是赚到
+
+### Stage 5: 分析
+- 汇报内容：读到了什么/哪些直接用/哪些需改/整体评价
+- **必须等用户确认后才进入 Stage 6**
+
+### Stage 6: 共识
+- 输出项目共识文档：做什么/为什么/目标/从哪里抄/怎么做
+- 存放：`blueprints/ai-info-digest-tool/output/`
+- 后续：项目管理 skill 读取接管
+
+## 文件结构
+
+```
+harvest-tool/
+├── SKILL.md
+├── skill.py          # 入口，交互式引导
+├── scripts/
+│   ├── discover.py  # Stage 1
+│   ├── evaluate.py  # Stage 2
+│   ├── harvest.py   # Stage 4
+│   ├── analyze.py   # Stage 5
+│   ├── consensus.py # Stage 6
+│   └── utils.py     # 公共工具
+├── configs/
+│   └── settings.py
+└── data/             # 临时数据
+```
+
+## 技术依赖
+
+- GitHub 搜索 API
+- SearXNG（备选）
+- `web_fetch`
+- DASHSCOPE_API_KEY（qwen3.5-flash）
+
+## 输出位置
+
+### 共识文档（Stage 6 输出）
+```
+~/.openclaw/workspace/blueprints/ai-info-digest-tool/output/
+├── consensus_<project>_<timestamp>.json   # 每轮共识（带时间戳）
+└── latest_consensus.json                   # 最新版本，方便读取
+```
+
+### 数据文件（各阶段产物）
+```
+~/.openclaw/workspace/skills/harvest-tool/data/
+├── discover_results.json        # Stage 1: GitHub 搜索结果
+├── evaluate_results.json        # Stage 2: 评估报告
+├── analysis_results.json        # Stage 5: LLM 分析结果
+├── harvest_<name>.json          # Stage 4: 各 repo 收割内容
+└── user_context.txt             # 用户需求上下文
+```
+
+## 下游 SOP 如何使用共识文档
+
+共识文档的 `repositories` 字段是源码地址数组，供下游 SOP 按需拉取：
+
+```json
+{
+  "repositories": [
+    {
+      "name": "owner/repo-name",
+      "github_url": "https://github.com/owner/repo-name",
+      "harvest_file": "harvest_owner-repo-name.json",
+      "language": "Python",
+      "参考价值": "直接复用",
+      "值得拆": "是"
+    }
+  ]
+}
+```
+
+**下游 SOP 获取源码的方式：**
+```bash
+# 从共识文档读取 github_url 后，git clone
+git clone https://github.com/owner/repo-name.git
+
+# 或读取本地摘要（README + 核心文件片段）
+cat ~/.openclaw/workspace/skills/harvest-tool/data/harvest_owner-repo-name.json
+```
+
+**字段说明：**
+- `github_url` — GitHub 仓库地址，下游 SOP 按需 clone
+- `harvest_file` — 本地摘要文件路径（含 README 全文 + 核心代码片段）
+- `参考价值` / `值得拆` — 来自 Stage 5 LLM 分析
