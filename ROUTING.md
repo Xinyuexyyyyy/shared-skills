@@ -1,6 +1,6 @@
 # ROUTING — 规则调用层
 
-> 日期：2026-06-19（v2，从"编排表"升级为"规则调用层"）
+> 日期：2026-07-13（v3，补 25 skill 全量路由 + GitHub mac↔win 同步后更新）
 > 借鉴：semantic-router（决策层：意图→路由，规则=话术样例不是if-else）、lmos-router（LLM/向量/混合三法）、Uno-Orchestra（吝啬路由：简单任务直接答，别浪费预算）。
 > 它是什么：用户说人话，agent 据本表实时**决策"这句话该调什么"**——可以是 skill、skill 链、插件、或直接答。不是预写死的编排流水线。
 > 配套：[ARCHITECTURE.md](ARCHITECTURE.md)。
@@ -36,7 +36,16 @@
 | 8 | "做个 PPT / 演示…" | `ppt-master-bridge`→`ppt-master` | 重活→路由 |
 | 9 | "连 Win/服务器 / 部署 opencove…" | 先查 `DEVICES.md`；opencove 部署→`opencove-remote-deploy` | 看情况 |
 | 10 | 复杂、要拆的活（任意类型） | 前置 `task-analyze`→`task-decompose`，再进对应行 | 路由 |
+| 10b | 生成结构化任务文件、规划大任务 | `task-crafter`（生成 TASK/state/context/artifacts/log 五件套） | 路由 |
+| 10c | 新项目、写蓝图、全流程管理 | `project-sop`（蓝图→拆任务→开发→测试→收尾） | 路由 |
+| 10d | 审问我、grill me、这个方案有什么问题 | `grillme`（分层诊断式提问，复杂方案提交前压力测试） | 路由 |
+| 10e | 初始化工作区 / 整理工作区 | `workspace-init` / `workspace-tidy` | 看情况 |
 | 11 | 任何活做完 | `closeout`（收尾+提议更新 tasks/记忆） | 收尾必走 |
+| 12 | 润色 / 去 AI 味 / 改得像人话 / 输出成品(Obsidian/docx/pdf) / 画流程图 | `output-layer`（公共输出路由，可内调 humanizer / output-polisher / output-style-checker / drawio-diagram-agent） | 看情况 |
+| 12b | 画 draw.io 图 / 流程图 / 架构图 / 路线图 | `drawio-diagram-agent`（文字→紧凑 draw.io） | 轻量→直接做 |
+| 13 | 评测 skill / skill 评分 / 优化 skill / 对齐工作方式 | `skill-optimizer` | 路由 |
+| 13b | 打开技能面板 / 看看我的技能 / 有什么 skill | `skill-dashboard` | 轻量→直接做 |
+| 13c | 引入外部 skill / 这个 GitHub skill 能用吗 | `skill-reforge`（外部引入→验证→适配） | 路由 |
 | 0 | **简单问答 / 查个事实 / 闲聊 / 一句话能答** | **直接答，不调任何东西** | ❌ 不路由 |
 
 ### 调研入口边界（别混）

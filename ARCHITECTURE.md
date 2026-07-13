@@ -1,115 +1,186 @@
 # 跨工作区 Skill 共享架构
 
-> 本文件是 `~/shared-skills/` 的权威文档。任何工作区的 AI 进入后都应能读懂当前结构。
+> 日期：2026-07-13
+> 本文件是 `~/shared-skills/` 的权威架构文档。GitHub 仓库 `Xinyuexyyyyy/shared-skills` 是跨平台（Mac/Win）的唯一权威源。
 
 ## 治理文档索引
 
 | 文档 | 管什么 |
 |---|---|
-| ARCHITECTURE.md（本文件） | skill 共享架构、权威源、光盘层约定 |
-| [EXPORTS.md](EXPORTS.md) | 权威源 + 开源仓库单向导出登记 |
+| [README.md](README.md) | 入口：skill 目录 + 双平台接入指南 + LiveWithOpenCove 关系 |
+| ARCHITECTURE.md（本文件） | 架构全景：分层、GitHub 同步、权威源、历史 |
+| [ROUTING.md](ROUTING.md) | 语义路由：意图话术→调什么 skill（agent 每轮开局读） |
+| [EVOLUTION-PACT.md](EVOLUTION-PACT.md) | 进化公约：draft/stable/deprecated 生命周期 |
 | [STORAGE-SPEC.md](STORAGE-SPEC.md) | skill 产出物存储 + 命名规范 |
-| [DIRECTORY-SPEC.md](DIRECTORY-SPEC.md) | 工作区目录命名规范（统一一级目录/下划线/英文） |
-| [CONTEXT-SPEC.md](CONTEXT-SPEC.md) | 上下文调用规范（什么时机读什么/读多深/防 token 膨胀） |
-| [EVOLUTION-PACT.md](EVOLUTION-PACT.md) | 进化公约：能力怎么开分支/收回 |
-| [ROUTING.md](ROUTING.md) | 规则调用层：说人话→决策调什么(skill/链/插件/直接答)，含吝啬原则 |
+| [CONTEXT-SPEC.md](CONTEXT-SPEC.md) | 上下文加载策略（什么时机读什么、读多深） |
+| [EXPORTS.md](EXPORTS.md) | 权威源→开源仓库单向导出登记 |
 | [DEVICES.md](DEVICES.md) | 设备与连接权威清单（Win/ECS/userysys，实测） |
-| [CONSENSUS-workspace-reorg-20260618.md](CONSENSUS-workspace-reorg-20260618.md) | 2026-06 重整全程决策留底 |
-| ~/.claude/hooks/HOOKS-RESPONSIBILITY.md | 全局 hook 职责表 |
+| [DIRECTORY-SPEC.md](DIRECTORY-SPEC.md) | 工作区目录命名规范 |
 
 ---
 
 ## 一、核心原则
 
-**每个 skill 只维护一份权威版本，其他工作区通过软链接引用。改一处，全局生效。**
+**GitHub 仓库 `Xinyuexyyyyy/shared-skills` 是唯一的权威源。** Mac 和 Win 通过 `git push/pull` 共享同一份 skill 池。每台机器本地 `git clone` 后，工作区按需软链接到 clone 目录。
 
 ---
 
-## 二、目录结构
+## 二、GitHub 同步架构
 
 ```
-~/shared-skills/
-├── task-analyze/          # 基础：意图分析
-├── task-decompose/        # 基础：任务拆解
-├── closeout/              # 基础：任务收尾
-├── research/              # 调研层：总入口 + 4 个子包
-│   ├── base/
-│   └── packages/
-│       ├── academic/
-│       ├── competitive/
-│       ├── comprehensive/
-│       └── discovery/
-├── idea-to-research/      # 调研层：模糊想法路由
-├── output-layer/          # 输出层：公共输出（markdown/Obsidian/docx）
-├── output-polisher/       # 输出层：排版与导出
-├── output-style-checker/  # 输出层：规则检查
-├── ui-design/             # 输出层：UI/页面/组件设计与截图验收
-├── source-intake/          # 前置层：URL/PDF/网页/资料包到 Markdown + evidence
-├── harvest-tool/          # 工具：GitHub 项目收割
-├── _tools/                # 本机公共工具层（下划线前缀，不被扫描为 skill）
-│   ├── scan-skills.py     # 跨工作区 skill 扫描 + 索引生成
-│   ├── skill-governance.py
-│   ├── skill-recommend.py
-│   ├── skill-trace.py
-│   ├── auto-link.sh       # 自动创建 CLAUDE.md -> SKILL.md 软链接
-│   └── start-dashboard.sh
-├── README.md              # 公共层入口说明
-└── ARCHITECTURE.md        # 本文件
+     GitHub: Xinyuexyyyyy/shared-skills  ← 权威源
+      ↑ git push                ↓ git pull
+   Mac (~/shared-skills/)   Win (C:\Users\sure\shared-skills\)    Mac 其他工作区
+        │ softlink                   │ softlink                        │ softlink
+   Mac 工作区 (DailyWork2 等)    Win 工作区 (DailyWorkAnsys 等)     ContentWork / study-research
+   ↓ closeout 建议写记忆           ↓ closeout 建议写记忆
+   各自 memory/                  各自 memory/
+   (按 LiveWithOpenCove           (按 LiveWithOpenCove
+    6 文件模型)                    6 文件模型)
+```
+
+**同步规则：**
+- 改 skill 只在本地 clone 目录改 → `git commit` → `git push`
+- 另一边 `git pull` 即同步
+- 两边同时改了同一文件 → 正常的 git merge 冲突解决，后来的一方处理
+- 每台机器的 memory/ 是本地独立的（不改它人记忆），不在 GitHub 同步
+
+## 三、目录结构
+
+```
+~/shared-skills/                    ← GitHub 权威仓库：Mac push, Win pull
+│   # ===== 根文件 =====
+├── README.md                       # 入口：skill 目录 + 接入指南
+├── ROUTING.md                      # 语义路由表：用户话术→调什么
+├── ARCHITECTURE.md                 # 本文件
+├── EVOLUTION-PACT.md               # 进化公约：draft/stable/deprecated
+├── STORAGE-SPEC.md                 # 产出物存储 + 命名
+├── CONTEXT-SPEC.md                 # 上下文加载策略
+├── EXPORTS.md                      # 单向导出登记
+├── DEVICES.md                      # 设备连接清单（实测）
+├── DIRECTORY-SPEC.md               # 目录命名规范
+│
+│   # ===== 调研层（8） =====
+├── deep-research/          # 调研总入口 v2.1
+├── research/               # 模板取证包（引擎）
+├── research-layer-v2/      # 方法编排参考
+├── idea-to-research/       # 模糊想法路由
+├── harvest-tool/           # GitHub 项目收割
+├── source-intake/          # 材料第一轮分析
+├── web-scrape/             # 网页数据提取
+├── methodology-distiller/  # 专家方法提炼
+│
+│   # ===== 任务层（7） =====
+├── task-analyze/           # 意图分析
+├── task-decompose/         # 任务拆解
+├── task-crafter/           # 任务文件生成
+├── project-sop/            # 项目全流程
+├── grillme/                # 诊断式提问
+├── workspace-init/         # 工作区初始化
+├── workspace-tidy/         # 工作区整理
+│
+│   # ===== 输出层（7） =====
+├── output-control-layer/   # 输出前总闸
+├── output-layer/           # 公共输出路由
+├── output-polisher/        # 排版 + Obsidian 导出
+├── output-style-checker/   # 硬伤检查
+├── humanizer/              # AI 痕迹审计
+├── drawio-diagram-agent/   # draw.io 流程图
+├── closeout/               # 任务收尾
+│
+│   # ===== 运维层（4） =====
+├── skill-optimizer/        # 锐评 + 优化闭环
+├── skill-dashboard/        # 技能仪表盘
+├── skill-reforge/          # 外部 skill 引入
+├── external-skill-adoption/# skill 采纳决策
+│
+│   # ===== 待激活（5） =====
+├── anchor-spark/           # 创作激发器
+├── debate-engine/          # AI 辩论引擎
+├── dream-catcher/          # 想法对撞机
+├── ui-design/              # UI 设计验收
+│
+│   # ===== 工具 + 数据 =====
+├── _tools/                 # 管理工具（不被扫描为 skill）
+├── methodology-vault/      # 方法卡片库（数据，非 skill）
+├── backups/                # skill 备份快照
+└── .gitignore
 ```
 
 ---
 
-## 三、工作区接入关系
+## 四、平台接入关系
 
-| 工作区 | 路径 | 接入方式 | 共用 skill 数 | 本地 skill |
-|--------|------|---------|--------------|-----------|
-| **Daily Work** | `~/Daily Work/` | skills/ 下软链接指向 shared-skills | 11 | bilibili-video-analyzer, better-option, info-head, ppt-master, ppt-master-bridge, skill-optimizer, skill-dashboard, opencove-remote-deploy, fast-onboard 等 |
-| **Content Work** | `~/Content Work/` | skills/ 下软链接指向 shared-skills | 9 | interview-writer（权威版）, sure-content-studio |
-| **Study Research** | `~/study-research/` | skills/ 下软链接指向 shared-skills | 9 | paper-discovery, paper-reading, paper-screening, research-academic, research-base, academic-deep-research, supervisor-scout, survey-writer |
-| **harvester-ai-research** | `~/study-research/harvester-ai-research/` | skills/ 下软链接指向 shared-skills | 7 | 无（纯消费者） |
+| 平台 | 工作区 | 接入方式 | 共用 skill 数 |
+|---|---|---|---|
+| **Mac** | `~/DailyWork2/` | skills/ 下软链接指向 `~/shared-skills/` | 25（全量） |
+| **Mac** | `~/Content Work/` | skills/ 下软链接指向 `~/shared-skills/` | 9（按需） |
+| **Mac** | `~/study-research/` | skills/ 下软链接指向 `~/shared-skills/` | 9（按需） |
+| **Win** | `C:\Users\sure\` | git clone 到 `C:\Users\sure\shared-skills\`，Win 工作区 skills/ 软链接指向它 | 25（全量） |
 
-### 跨区链接（非 shared-skills）
+### Mac 本地 skill（不在 shared-skills，各工作区独有）
 
-| Skill | 权威位置 | 链接到 |
-|-------|---------|-------|
-| `interview-writer` | Content Work | Daily Work 软链过去 |
+| 工作区 | 本地 skill |
+|---|---|
+| DailyWork2 | ppt-master, ppt-master-bridge, bilibili-video-analyzer, douyin-video-analyzer, opencove-remote-deploy, content-pipeline, info-head, topic-collector, interview-writer, english-daily-session, autostudy, fast-onboard 等 |
+| Content Work | interview-writer（权威版）, sure-content-studio |
+| Study Research | paper-discovery, paper-reading, paper-screening, academic-deep-research, supervisor-scout, survey-writer 等 |
 
 ---
 
-## 四、Skill 分层
+## 五、Skill 分层
 
 ```
-┌─────────────────────────────────────┐
-│         共用层 (~/shared-skills/)    │
-│  base: task-analyze, task-decompose, │
-│        closeout                      │
-│  调研: research, idea-to-research    │
-│  前置: source-intake                 │
-│  输出: output-layer, output-polisher,│
-│        output-style-checker,         │
-│        ui-design                     │
-│  工具: harvest-tool                  │
-└─────────────┬───────────────────────┘
-              │ 软链接
+┌─────────────────────────────────────────────────┐
+│         共用层 (~/shared-skills/) — 25 skill     │
+│                                                  │
+│  调研: deep-research, research, research-layer-v2│
+│        idea-to-research, harvest-tool,            │
+│        source-intake, web-scrape,                 │
+│        methodology-distiller          (8)         │
+│                                                   │
+│  任务: task-analyze, task-decompose,              │
+│        task-crafter, project-sop, grillme,        │
+│        workspace-init, workspace-tidy (7)         │
+│                                                   │
+│  输出: output-control-layer, output-layer,        │
+│        output-polisher, output-style-checker,     │
+│        humanizer, drawio-diagram-agent,           │
+│        closeout                         (7)       │
+│                                                   │
+│  运维: skill-optimizer, skill-dashboard,          │
+│        skill-reforge, external-skill-adoption (4) │
+│                                                   │
+│  待激活: anchor-spark, debate-engine,             │
+│         dream-catcher, ui-design        (5)      │
+└─────────────┬───────────────────────────────────┘
+              │ GitHub push/pull (跨平台)
+              │ 或 软链接 (同机跨工作区)
     ┌─────────┼─────────┬──────────────┐
     │         │         │              │
- Daily Work  Content  Study       harvester
- (本地 skill) Work    Research    -ai-research
-              (本地)   (本地)      (纯消费)
+ DailyWork2  Content  Study       Win 工作区
+ (Mac)       Work     Research    (Win)
+             (Mac)    (Mac)       git clone →
+                                  C:\Users\sure\
+                                  shared-skills\
 ```
+
+> LiveWithOpenCove 是这套架构的"公开文档版"——它用 5 个教学骨架 + 示例工作区向开源用户展示方法。shared-skills 是你的**实际运行版**（25 skill，完整逻辑）。两个仓库的关系见 [README.md](README.md) 的"记忆体系"节。注意：架构图中的方向是"推哪个 skill 到哪个仓库"，实际同步方向是 `权威源 → 开源仓库`，反向禁止。
 
 ---
 
-## 五、约定
+## 六、约定
 
-### 5.1 新增共用 skill
+### 6.1 新增共用 skill（GitHub 工作流）
 
-1. 在 `~/shared-skills/` 下创建目录，写 `SKILL.md`
-2. 运行 `~/shared-skills/_tools/auto-link.sh` 自动建 `CLAUDE.md -> SKILL.md`
-3. 在需要的工作区 skills/ 下建软链接：`ln -sf ~/shared-skills/<name> <name>`
-4. 更新对应工作区的 AGENTS.md 和 .claude/CLAUDE.md 的 skill 列表
+1. `git pull` 拉最新，避免冲突
+2. 在 `~/shared-skills/` 下创建目录，写 `SKILL.md`
+3. 运行 `_tools/auto-link.sh` 自动建 `CLAUDE.md -> SKILL.md`
+4. `git add -A && git commit -m "feat: add <skill>" && git push`
+5. Win 端 `cd C:\Users\sure\shared-skills && git pull`
+6. 各工作区如需接入，建软链接到 clone 目录
 
-### 5.2 新建工作区接入
+### 6.2 新建工作区接入
 
 1. 在新工作区下创建 `skills/` 目录
 2. 按需建软链接到 `~/shared-skills/` 下的 skill
@@ -118,13 +189,13 @@
 5. 创建 `AGENTS.md`，列出共用 skill 和本地 skill
 6. 创建 `.claude/CLAUDE.md`，写 Skills 边界表
 
-### 5.3 Skill 命名冲突
+### 6.3 Skill 命名冲突
 
 - 共用 skill 改名时，需要同时更新所有工作区的软链接
 - 如果某个工作区需要对共用 skill 做个性化，优先走第八节"光盘层"约定（只放配置差异）；只有逻辑确实要分叉时，才把它移回本地，不要在 shared-skills 里加条件分支
 - 全局入口（`~/.claude/skills/`）一个 skill 只保留一个入口，不加工作区前缀；只有"同名不同内容"才加前缀消歧。角色隔离交给各工作区自己的 `skills/` 目录
 
-### 5.4 管理工具使用
+### 6.4 管理工具使用
 
 `_tools/` 是本机公共工具层，只负责扫描、追踪、推荐、治理和 dashboard 数据，不放业务 skill。
 
@@ -160,7 +231,7 @@ python3 skills/skill-recommend-regression.py
 
 ---
 
-## 六、验证方法
+## 七、验证方法
 
 ```bash
 # 确认软链接完整性（在任意工作区 skills/ 下）
@@ -175,7 +246,7 @@ python3 ~/shared-skills/_tools/scan-skills.py --tree
 
 ---
 
-## 七、权威源与开源发布（单向导出）
+## 八、权威源与开源发布（单向导出）
 
 > 完整登记表见 [EXPORTS.md](EXPORTS.md)。本节只讲规则。
 
@@ -197,7 +268,7 @@ python3 ~/shared-skills/_tools/scan-skills.py --tree
 
 ---
 
-## 八、光盘层约定（保留，暂不实现）
+## 九、光盘层约定（保留，暂不实现）
 
 > 这是一个**已确认方向但暂不落地**的约定，记在这里防止以后重复讨论。
 
@@ -211,9 +282,10 @@ python3 ~/shared-skills/_tools/scan-skills.py --tree
 
 ---
 
-## 九、历史
+## 十、历史
 
-- **2026-06-18**：工作区重整。全局入口去马甲 84→33；目录名统一不带空格；确立两个权威源 + 单向导出（见 [EXPORTS.md](EXPORTS.md)）；新增光盘层约定（第八节，暂不实现）。完整决策见 [CONSENSUS-workspace-reorg-20260618.md](CONSENSUS-workspace-reorg-20260618.md)。
-- **2026-05-27**：新增 `source-intake` 到公共池，先接入 Daily Work，用于 URL/PDF/网页/资料包到 Markdown + evidence 的资料摄取前置层。
-- **2026-05-27**：新增 `ui-design` 到公共池，先接入 Daily Work，用于 UI/页面/组件设计与截图验收。
-- **2026-05-21**：初始建立。从 Daily Work 迁出 9 个 skill 到公共池，对齐 DW/CW/SR + harvester-ai-research 四个工作区。
+- **2026-07-13**：Win 重装后重建。shared-skills 推 GitHub（`Xinyuexyyyyy/shared-skills`），Mac↔Win 同步链路打通。新增 13 个 DailyWork2 独有 skill 入仓，harvest-tool 合并入仓。skill 从 11→25（+ web-scrape / anchor-spark / debate-engine / dream-catcher / ui-design 待激活）。ARCHITECTURE 补 GitHub 同步章节。README 重写为双平台接入本。ROUTING 更新全量 skill 路由。明确 LiveWithOpenCove = 记忆骨架 / shared-skills = 技能引擎 的分工。
+- **2026-06-18**：工作区重整。全局入口去马甲 84→33；目录名统一不带空格；确立两个权威源 + 单向导出（见 [EXPORTS.md](EXPORTS.md)）；新增光盘层约定（暂不实现）。完整决策见 [CONSENSUS-workspace-reorg-20260618.md](CONSENSUS-workspace-reorg-20260618.md)。
+- **2026-05-27**：新增 `source-intake` 到公共池，先接入 Daily Work。
+- **2026-05-27**：新增 `ui-design` 到公共池，先接入 Daily Work。
+- **2026-05-21**：初始建立。从 Daily Work 迁出 9 个 skill 到公共池。
