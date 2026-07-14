@@ -57,8 +57,9 @@ Harness 管理需要同时满足六个约束：
 3. 使用物化脚本生成 canonical bundle。
 4. 使用同一 assembly 生成示例工作区副本。
 5. 运行 bundle 一致性检查、manifest 校验和负向测试。
-6. 执行目标运行时新会话烟测。
-7. 提交版本后，才生成存储镜像。
+6. 运行完整能力映射、hook 行为和 memory fixture 测试。
+7. 执行目标运行时新会话烟测。
+8. 提交版本后，才生成存储镜像。
 
 ## 5. 版本规则
 
@@ -89,6 +90,7 @@ Bundle 使用语义版本：
 - 被明确列入清单的 skills。
 - 示例入口与说明。
 - 校验脚本和测试。
+- 明确列入 manifest 的 hook、维护工具和默认关闭的可选组件。
 
 发布内容不得包含：
 
@@ -108,6 +110,8 @@ Bundle 使用语义版本：
 - `.claude/CLAUDE.md`：Claude 发现入口。
 - `.claude/memory/`：工作区私有状态。
 - `harness/`：共享工作方式、清单和规范化 skills。
+
+v2 直接参考并迁入其 workspace skeleton 中的 `MEMORY.md`、workspace brief/map、current position、timeline、decisions、lessons、两个 archive 模板，以及 `memory_gc`、`lessons_gc`、`check_map`、`organize`。迁入后只做路径参数化和 Harness 边界适配，不携带任何真实工作区内容。
 
 与原始骨架相比，harness 内容从多个入口文件中抽离，集中进入 `harness/`。入口文件只保留机器可发现的最小指针。
 

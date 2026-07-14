@@ -56,10 +56,11 @@ harness/
 │   │   └── claude/
 │   └── input-capture/
 ├── assemblies/
-│   └── core-workspace-v1.yaml
+│   └── core-workspace-v2.yaml
 ├── bundles/
 │   ├── runtime-baseline/
-│   └── core-workspace-v1/
+│   ├── core-workspace-v1/        # 历史摘要版，只保留校验快照
+│   └── core-workspace-v2/        # 当前完整迁移草稿
 ├── examples/
 │   └── livewithopencove-workspace/
 ├── scripts/
@@ -77,21 +78,21 @@ harness/
 | `scripts/` | Bundle 物化、结构检查和校验工具 |
 | `tests/` | 结构检查、负向测试和运行时烟测 |
 
-维护时只改 `components/` 和 `assemblies/`，不要手工修改 `core-workspace-v1/` 内的生成文件。Bundle 和示例副本由物化命令重新生成，校验会拒绝源组件与发布副本不一致的状态。
+维护时只改 `components/` 和 `assemblies/`，不要手工修改 `core-workspace-v2/` 内的生成文件。Bundle 和示例副本由物化命令重新生成，校验会拒绝源组件与发布副本不一致的状态。v1 的旧 assembly 已归档，防止历史摘要版被新组件原地重建。
 
 ## 4. 核心组件
 
 ### Output Control
 
-负责识别用户最后一句的真实意图、防止过度执行、控制高风险写入、压缩内部过程，并强制先给结果和验收方式。
+包含完整 `SKILL.md`、`TWO-STAGE.md`、文档渲染验收、长会话触发稳定性、写入前二审和四段交付；同时提供注入器、危险命令、先读后改、过度执行和两段制提醒 hooks。
 
 ### Routing Context
 
-负责判断直接回答、skill、工具或完整流程；按需加载规则、任务上下文和记忆；路由只能指向当前运行时真实可发现的能力。
+包含完整路由表与 `CONTEXT-SPEC`；负责判断直接回答、skill、工具或完整流程，按需加载上下文，并在调用前确认目标能力真实可发现。
 
 ### Memory System
 
-负责工作区私有记忆的结构、读取时机、候选生成、人工确认、正式写入、裁剪和归档。真实记忆永远留在工作区。
+采用 LiveWithOpenCove 的完整空模板、归档模板和维护方法，并带 `memory_gc`、`lessons_gc`、`check_map`、`organize`、checkpoint 与记忆提醒。真实记忆永远留在工作区。
 
 ### Workflow
 
@@ -99,7 +100,7 @@ harness/
 
 ### Closeout
 
-负责结果、最短验收路径、未完成内容和相邻下一步。它可以提出记忆候选，但未经人工确认不得写入长期记忆。
+包含完整 closeout skill 与扩展说明，覆盖完成、部分完成、失败、阻塞、叫停、证据预算和可选记忆候选；未经人工确认不得写入长期记忆。
 
 ### Runtime Adapters
 
@@ -107,7 +108,7 @@ harness/
 
 ### Input Capture
 
-输入捕获是可选组件，默认关闭。启用前必须声明目的、数据范围、保存位置、保留期限、清理方式和用户可见的启停方法，不得成为核心 bundle 的隐式依赖。
+输入捕获的适配器、桥接器、敏感信息过滤和本地记录器随 v2 提供，但默认关闭、未注册、零写入。显式启用后只写当前工作区 `.claude/capture/`，不得自动建任务或写长期记忆。
 
 ## 5. 单次输出工作流制度
 
@@ -228,8 +229,10 @@ Manifest 与实际文件不一致时，bundle 不得发布。
 ├── workspace-map.md
 ├── current-position.md
 ├── timeline.md
+├── timeline-archive.md
 ├── decisions.md
 ├── lessons.md
+├── lessons-archive.md
 └── tasks/
     └── INDEX.md
 ```
@@ -246,34 +249,38 @@ Manifest 与实际文件不一致时，bundle 不得发布。
 
 ## 7. Bundle 与适配器
 
-草稿版 `core-workspace-v1@0.1.0` 已包含：
+完整迁移草稿 `core-workspace-v2@0.1.0` 已包含：
 
 ```text
-core-workspace-v1/
+core-workspace-v2/
+├── CAPABILITY-MAP.yaml
 ├── rules/
 │   ├── workflow.md
-│   ├── output-control.md
-│   ├── routing-context.md
-│   ├── memory-system.md
-│   └── closeout.md
-├── adapters/
-│   ├── codex.md
-│   └── claude.md
-└── templates/memory/
+│   ├── ROUTING.md
+│   ├── CONTEXT-SPEC.md
+│   └── memory-system.md
+├── skills/
+│   ├── output-control-layer/
+│   └── closeout/
+├── hooks/
+├── tools/memory/
+├── templates/memory/
+├── runtime/
+└── optional/input-capture/
 ```
 
-`input-capture` 仅作为显式可选组件存在。修改核心制度时更新 bundle 版本；仅修改运行时接入方式时更新适配器版本。适配器不得覆盖固定工作流。
+`input-capture` 文件随包存在但默认关闭。修改核心制度时更新 bundle 版本；仅修改运行时接入方式时更新适配器版本。适配器不得覆盖固定工作流。
 
 物化与一致性检查：
 
 ```bash
 python3 scripts/materialize-bundle.py \
-  --assembly assemblies/core-workspace-v1.yaml \
-  --output bundles/core-workspace-v1
+  --assembly assemblies/core-workspace-v2.yaml \
+  --output bundles/core-workspace-v2
 
 python3 scripts/materialize-bundle.py \
-  --assembly assemblies/core-workspace-v1.yaml \
-  --output bundles/core-workspace-v1 \
+  --assembly assemblies/core-workspace-v2.yaml \
+  --output bundles/core-workspace-v2 \
   --check
 ```
 
@@ -281,7 +288,7 @@ python3 scripts/materialize-bundle.py \
 
 ## 8. 最小接入
 
-1. 选择明确版本的 bundle；试用当前成果时选择 `core-workspace-v1@0.1.0` 并保留 `draft` 标记。
+1. 选择明确版本的 bundle；试用完整迁移成果时选择 `core-workspace-v2@0.1.0` 并保留 `draft` 标记。
 2. 创建工作区规则入口。
 3. 接入对应运行时适配器。
 4. 初始化空的工作区记忆模板。
@@ -326,17 +333,20 @@ workspace/
 | 内容 | 状态 |
 |---|---|
 | 方法、README、manifest 规范 | 已落地 |
-| 输出控制、路由、记忆、工作流、closeout | 已组件化 |
-| Codex、Claude 适配说明 | 已进入核心 bundle |
-| `core-workspace-v1@0.1.0` | 已物化，状态为 `draft` |
-| LiveWithOpenCove 风格示例 | 已切换到核心 bundle |
-| 结构检查、校验值、负向测试 | 已通过本机验证 |
-| Win Codex、Claude 独立示例新会话烟测 | 已通过 |
+| `core-workspace-v1@0.1.0` | 历史摘要版，保留不再扩展 |
+| 完整输出控制、两段制、路由、上下文、closeout | 已进入 v2 |
+| LiveWithOpenCove 记忆模板与四个维护工具 | 已进入 v2 |
+| 10 个运行 hooks 与双运行时注册模板 | 已进入 v2，按 runtime 启用 |
+| Input Capture 完整实现 | 已进入 v2，默认关闭 |
+| `core-workspace-v2@0.1.0` | 已物化，状态为 `draft` |
+| LiveWithOpenCove 风格示例 | 已切换到 v2 |
+| 结构、校验值、负向、hook、memory fixture | 已通过本机验证 |
+| Win Codex、Claude v2 新会话烟测 | 待执行 |
 | Win 用户根全局 Harness 接入 | 未执行，与独立示例分开处理 |
 | 存储镜像草稿副本 | 已生成并完成提交号、校验值复核 |
 | 正式发布版本 | 尚未发布 |
 
-在以下条件全部满足前，不得把 `core-workspace-v1` 标记为稳定：
+在以下条件全部满足前，不得把 `core-workspace-v2` 标记为稳定：
 
 - Codex 和 Claude 都在新会话中读到同一 bundle ID、版本和工作流阶段。
 - 问判断、未授权写入、验证失败和记忆确认四类行为烟测通过。

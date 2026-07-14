@@ -1,0 +1,74 @@
+schema_version: "1"
+kind: capability-map
+bundle_id: core-workspace-v2
+bundle_version: 0.1.0
+status: draft
+capabilities:
+  - id: single-turn-workflow
+    source: single-turn workflow manifest
+    target: rules/workflow.md
+    required: true
+    verification: workflow stage order and behavior smoke
+  - id: output-control-full
+    source: output-control-layer skill
+    target: skills/output-control-layer/SKILL.md
+    required: true
+    verification: full section markers and response pressure tests
+  - id: two-stage-full
+    source: output-control two-stage specification
+    target: skills/output-control-layer/TWO-STAGE.md
+    required: true
+    verification: high-risk change pressure test
+  - id: routing-full
+    source: shared routing table
+    target: rules/ROUTING.md
+    required: true
+    verification: route target discovery checks
+  - id: context-full
+    source: shared context specification
+    target: rules/CONTEXT-SPEC.md
+    required: true
+    verification: lazy-load behavior smoke
+  - id: memory-livewithopencove
+    source: LiveWithOpenCove workspace skeleton
+    target: templates/memory
+    required: true
+    verification: empty-template and private-state checks
+  - id: memory-maintenance
+    source: LiveWithOpenCove workspace scripts
+    target: tools/memory
+    required: true
+    verification: fixture dry-run and apply tests
+  - id: closeout-full
+    source: closeout skill
+    target: skills/closeout
+    required: true
+    verification: complete, partial, blocked, and stopped behavior smoke
+  - id: output-control-hooks
+    source: output-control runtime hooks
+    target: hooks
+    required: true
+    verification: isolated hook input/output tests
+  - id: memory-hooks
+    source: checkpoint and memory reminder hooks
+    target: hooks
+    required: true
+    verification: isolated workspace tests
+  - id: runtime-adapters
+    source: Codex and Claude runtime contracts
+    target: runtime
+    required: true
+    verification: clean-session discovery smoke
+  - id: input-capture
+    source: optional input capture layer
+    target: optional/input-capture
+    required: false
+    default_enabled: false
+    verification: default installation writes nothing; explicit enable writes only workspace-local capture data
+
+excluded_state:
+  - real-memory
+  - task-history
+  - cross-device-state
+  - credentials
+  - device-config

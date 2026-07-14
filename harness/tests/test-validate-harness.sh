@@ -10,7 +10,7 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 cp -R "$HARNESS_ROOT/examples/livewithopencove-workspace" "$tmp_dir/workspace"
 
-sed -i.bak 's#path: bundles/core-workspace-v1#path: /tmp/core-workspace-v1#' \
+sed -i.bak 's#path: bundles/core-workspace-v2#path: /tmp/core-workspace-v2#' \
   "$tmp_dir/workspace/harness/manifest.yaml"
 rm "$tmp_dir/workspace/harness/manifest.yaml.bak"
 set +e
@@ -52,12 +52,12 @@ set -e
 grep -Eiq 'undeclared' <<<"$undeclared_output"
 
 cp -R "$HARNESS_ROOT/examples/livewithopencove-workspace" "$tmp_dir/renamed-workspace"
-mv "$tmp_dir/renamed-workspace/harness/bundles/core-workspace-v1" \
+mv "$tmp_dir/renamed-workspace/harness/bundles/core-workspace-v2" \
   "$tmp_dir/renamed-workspace/harness/bundles/renamed-core"
-sed -i.bak 's#path: bundles/core-workspace-v1#path: bundles/renamed-core#' \
+sed -i.bak 's#path: bundles/core-workspace-v2#path: bundles/renamed-core#' \
   "$tmp_dir/renamed-workspace/harness/manifest.yaml"
 rm "$tmp_dir/renamed-workspace/harness/manifest.yaml.bak"
-printf '\nchanged\n' >> "$tmp_dir/renamed-workspace/harness/bundles/renamed-core/rules/output-control.md"
+printf '\nchanged\n' >> "$tmp_dir/renamed-workspace/harness/bundles/renamed-core/skills/output-control-layer/SKILL.md"
 set +e
 renamed_output="$($HARNESS_ROOT/scripts/validate-harness.sh --workspace "$tmp_dir/renamed-workspace" 2>&1)"
 renamed_status=$?
@@ -132,9 +132,14 @@ printf '\n参考：%s\n' 'https://example.com/docs/runtime-baseline' >> \
 https_output="$($HARNESS_ROOT/scripts/validate-harness.sh --workspace "$tmp_dir/https-workspace")"
 grep -Fq "harness validation passed" <<<"$https_output"
 
+cp -R "$HARNESS_ROOT/examples/livewithopencove-workspace" "$tmp_dir/division-workspace"
+printf '\n示例：%s\n' 'size // 1024' >> "$tmp_dir/division-workspace/harness/HARNESS.md"
+division_output="$($HARNESS_ROOT/scripts/validate-harness.sh --workspace "$tmp_dir/division-workspace")"
+grep -Fq "harness validation passed" <<<"$division_output"
+
 cp -R "$HARNESS_ROOT/examples/livewithopencove-workspace" "$tmp_dir/checksum-workspace"
 printf '\nchanged\n' >> \
-  "$tmp_dir/checksum-workspace/harness/bundles/core-workspace-v1/rules/output-control.md"
+  "$tmp_dir/checksum-workspace/harness/bundles/core-workspace-v2/skills/output-control-layer/SKILL.md"
 set +e
 checksum_output="$($HARNESS_ROOT/scripts/validate-harness.sh --workspace "$tmp_dir/checksum-workspace" 2>&1)"
 checksum_status=$?
@@ -144,8 +149,8 @@ grep -Eiq 'sha256|checksum|mismatch' <<<"$checksum_output"
 
 cp -R "$HARNESS_ROOT/examples/livewithopencove-workspace" "$tmp_dir/workflow-workspace"
 sed -i.bak 's/^  - digest$/  - verification/' \
-  "$tmp_dir/workflow-workspace/harness/bundles/core-workspace-v1/manifest.yaml"
-rm "$tmp_dir/workflow-workspace/harness/bundles/core-workspace-v1/manifest.yaml.bak"
+  "$tmp_dir/workflow-workspace/harness/bundles/core-workspace-v2/manifest.yaml"
+rm "$tmp_dir/workflow-workspace/harness/bundles/core-workspace-v2/manifest.yaml.bak"
 set +e
 workflow_output="$($HARNESS_ROOT/scripts/validate-harness.sh --workspace "$tmp_dir/workflow-workspace" 2>&1)"
 workflow_status=$?
@@ -153,18 +158,41 @@ set -e
 [[ $workflow_status -ne 0 ]]
 grep -Eiq 'workflow|stages|order|contract' <<<"$workflow_output"
 
+for required_section in workflow memory_policy input_capture runtime_adapters hooks checks capability_map; do
+  section_workspace="$tmp_dir/missing-$required_section-workspace"
+  cp -R "$HARNESS_ROOT/examples/livewithopencove-workspace" "$section_workspace"
+  python3 - "$section_workspace/harness/bundles/core-workspace-v2/manifest.yaml" "$required_section" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+path = Path(sys.argv[1])
+section = sys.argv[2]
+data = yaml.safe_load(path.read_text(encoding="utf-8"))
+data.pop(section)
+path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+PY
+  set +e
+  section_output="$($HARNESS_ROOT/scripts/validate-harness.sh --workspace "$section_workspace" 2>&1)"
+  section_status=$?
+  set -e
+  [[ $section_status -ne 0 ]]
+  grep -Eiq "$required_section|missing|required" <<<"$section_output"
+done
+
 python3 "$HARNESS_ROOT/scripts/materialize-bundle.py" \
-  --assembly assemblies/core-workspace-v1.yaml \
-  --output bundles/core-workspace-v1 \
+  --assembly assemblies/core-workspace-v2.yaml \
+  --output bundles/core-workspace-v2 \
   --check >/dev/null
 python3 "$HARNESS_ROOT/scripts/materialize-bundle.py" \
-  --assembly assemblies/core-workspace-v1.yaml \
-  --output examples/livewithopencove-workspace/harness/bundles/core-workspace-v1 \
+  --assembly assemblies/core-workspace-v2.yaml \
+  --output examples/livewithopencove-workspace/harness/bundles/core-workspace-v2 \
   --check >/dev/null
 
 set +e
 unsafe_output="$(python3 "$HARNESS_ROOT/scripts/materialize-bundle.py" \
-  --assembly assemblies/core-workspace-v1.yaml \
+  --assembly assemblies/core-workspace-v2.yaml \
   --output bundles/not-the-bundle \
   --check 2>&1)"
 unsafe_status=$?
@@ -180,5 +208,9 @@ credential_status=$?
 set -e
 [[ $credential_status -ne 0 ]]
 grep -Eiq 'credential|published content' <<<"$credential_output"
+
+bash "$HARNESS_ROOT/tests/test-full-capability-parity.sh"
+python3 "$HARNESS_ROOT/tests/test-runtime-hooks.py"
+bash "$HARNESS_ROOT/tests/test-memory-tools.sh"
 
 echo "validate-harness test passed"

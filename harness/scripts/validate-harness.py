@@ -111,10 +111,12 @@ def load_skill_name(path: Path) -> str:
 def scan_portability(paths: list[Path]) -> None:
     forbidden_names = ("open" + "claw", "hu" + "b", "user" + "ysys")
     absolute_path = re.compile(
-        r"(?<![A-Za-z0-9._-])/(?!/)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*"
-        r"|[A-Za-z]:[\\/]"
-        r"|\\\\[^\\\s]+\\"
+        r"(?:^|[\s`\"'(=:\[：])/(?!/)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*"
+        r"|(?:^|[\s`\"'(=:\[：])[A-Za-z]:[\\/]"
+        r"|(?:^|[\s`\"'(=:\[：])\\\\[^\\\s]+\\",
+        re.MULTILINE,
     )
+    file_url = re.compile(r"\bfile://", re.IGNORECASE)
     forbidden_runtime = re.compile(r"\b(?:" + "|".join(forbidden_names) + r")\b", re.IGNORECASE)
     credential_words = ("pass" + "word", "to" + "ken", "se" + "cret", "api" + "[_-]?key")
     credential_assignment = re.compile(
@@ -126,7 +128,8 @@ def scan_portability(paths: list[Path]) -> None:
     for path in paths:
         text = path.read_text(encoding="utf-8")
         portability_text = https_url.sub("", text)
-        if absolute_path.search(portability_text):
+        portability_text = re.sub(r"\A#![^\n]*\n", "", portability_text)
+        if file_url.search(text) or absolute_path.search(portability_text):
             fail(f"absolute path found in published content: {path}")
         if forbidden_runtime.search(text):
             fail(f"forbidden runtime or device reference: {path}")
@@ -142,6 +145,17 @@ def validate_bundle(bundle_dir: Path, expected_id: str | None = None, expected_v
     if require(manifest, "kind", manifest_path) != "bundle":
         fail(f"manifest kind is not bundle: {manifest_path}")
     bundle_id = require_id(require(manifest, "id", manifest_path), "bundle id")
+    if bundle_id == "core-workspace-v2" or manifest.get("profile") == "core-workspace":
+        for section in (
+            "workflow",
+            "memory_policy",
+            "input_capture",
+            "runtime_adapters",
+            "hooks",
+            "checks",
+            "capability_map",
+        ):
+            require(manifest, section, manifest_path)
     version = require_version(require(manifest, "version", manifest_path), "bundle")
     status = require(manifest, "status", manifest_path)
     if status not in {"draft", "stable", "deprecated"}:
@@ -195,6 +209,59 @@ def validate_bundle(bundle_dir: Path, expected_id: str | None = None, expected_v
             require_file(adapter, f"{runtime_name} bundle adapter")
             if Path(str(adapter_value)).as_posix() not in declared:
                 fail(f"bundle adapter is not declared in files: {adapter_value}")
+
+    capability_map_value = manifest.get("capability_map")
+    if capability_map_value is not None:
+        capability_map_path = relative_path(
+            capability_map_value, bundle_dir, bundle_dir, "bundle capability map"
+        )
+        require_file(capability_map_path, "bundle capability map")
+        normalized_map = Path(str(capability_map_value)).as_posix()
+        if normalized_map not in declared:
+            fail(f"bundle capability map is not declared in files: {capability_map_value}")
+        capability_map = load_manifest(capability_map_path)
+        if capability_map.get("kind") != "capability-map":
+            fail(f"invalid capability map kind: {capability_map_path}")
+        if capability_map.get("bundle_id") != bundle_id or capability_map.get("bundle_version") != version:
+            fail(f"capability map bundle identity mismatch: {capability_map_path}")
+
+    input_capture = manifest.get("input_capture")
+    if input_capture is not None:
+        if not isinstance(input_capture, dict) or not isinstance(input_capture.get("enabled"), bool):
+            fail(f"input_capture.enabled must be boolean: {manifest_path}")
+        if bundle_id.startswith("core-workspace") and input_capture["enabled"]:
+            fail(f"core bundle must not enable input capture by default: {manifest_path}")
+
+    hooks = manifest.get("hooks")
+    if hooks is not None:
+        if not isinstance(hooks, dict) or "catalog" not in hooks:
+            fail(f"hooks must declare a catalog: {manifest_path}")
+        for label, hook_value in hooks.items():
+            hook_path = relative_path(hook_value, bundle_dir, bundle_dir, f"bundle hook {label}")
+            require_file(hook_path, f"bundle hook {label}")
+            if Path(str(hook_value)).as_posix() not in declared:
+                fail(f"bundle hook file is not declared in files: {hook_value}")
+        hook_catalog = load_manifest(bundle_dir / str(hooks["catalog"]))
+        catalog_hooks = hook_catalog.get("hooks")
+        if not isinstance(catalog_hooks, list) or len(catalog_hooks) < 8:
+            fail(f"hook catalog is incomplete: {hooks['catalog']}")
+        hook_ids: set[str] = set()
+        for item in catalog_hooks:
+            if not isinstance(item, dict):
+                fail(f"hook catalog entry must be a mapping: {hooks['catalog']}")
+            hook_id = require_id(require(item, "id", bundle_dir / str(hooks["catalog"])), "hook id")
+            if hook_id in hook_ids:
+                fail(f"duplicate hook id: {hook_id}")
+            hook_ids.add(hook_id)
+            hook_file = relative_path(
+                require(item, "file", bundle_dir / str(hooks["catalog"])),
+                bundle_dir,
+                bundle_dir,
+                "hook implementation",
+            )
+            require_file(hook_file, "hook implementation")
+            if hook_file.relative_to(bundle_dir.resolve()).as_posix() not in declared:
+                fail(f"hook implementation is not declared in files: {hook_file}")
 
     actual = {
         path.relative_to(bundle_dir).as_posix()
@@ -406,7 +473,10 @@ def compare_tree(left: Path, right: Path) -> None:
 
 
 def validate_library(root: Path) -> None:
-    required = [root / name for name in ("README.md", "METHODOLOGY.md", "MANIFEST-SPEC.md")]
+    required = [
+        root / name
+        for name in ("README.md", "METHODOLOGY.md", "MANIFEST-SPEC.md", "CAPABILITY-MAP.yaml")
+    ]
     for path in required:
         require_file(path, "harness library file")
     bundle_dirs = sorted(path for path in (root / "bundles").iterdir() if path.is_dir())

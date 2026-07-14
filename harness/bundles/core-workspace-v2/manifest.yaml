@@ -1,0 +1,205 @@
+schema_version: '1'
+kind: bundle
+id: core-workspace-v2
+version: 0.1.0
+status: draft
+description: Full reusable workspace harness with workflow, skills, memory tools,
+  hooks, and runtime templates
+runtime: neutral
+entrypoint: rules/workflow.md
+capability_map: CAPABILITY-MAP.yaml
+workflow:
+  id: single-turn-workflow
+  version: 1.0.0
+  stages:
+  - input-hygiene
+  - digest
+  - broad-route
+  - theme-adapter
+  - artifact-gate
+  - execution
+  - verification
+  - output-control
+  - closeout
+  - inspiration-manual-only
+memory_policy:
+  private_root: .claude/memory
+  lazy_load: true
+  write_requires_confirmation: true
+  checkpoint_is_private_memory: false
+input_capture:
+  included: true
+  enabled: false
+runtime_adapters:
+  codex: runtime/codex/AGENTS.md.tmpl
+  claude: runtime/claude/CLAUDE.md.tmpl
+hooks:
+  catalog: hooks/HOOKS.yaml
+  codex_registration: runtime/codex/hooks.json.tmpl
+  claude_registration: runtime/claude/settings.hooks.json.tmpl
+checks:
+  structure: scripts/validate-harness.sh
+  negative_tests: tests/test-validate-harness.sh
+  capability_parity: tests/test-full-capability-parity.sh
+  hook_behavior: tests/test-runtime-hooks.py
+  memory_tools: tests/test-memory-tools.sh
+files:
+- path: CAPABILITY-MAP.yaml
+  role: capability-map
+  sha256: 831cab51cbb355d076a621c11cd29669a966cbf714b6b05e6c6f0a13c7a6f818
+- path: rules/workflow.md
+  role: workflow-contract
+  sha256: f5b65b29ab262d68d09ab973b728177f3e17ccaed465e95c72bb612ecfe269b6
+  component_id: workflow
+- path: rules/ROUTING.md
+  role: routing-rules
+  sha256: 65435647bc6296eea8ee35b8f7df610251ec364ff7228f19ee79b667759690bd
+  component_id: routing-context
+- path: rules/CONTEXT-SPEC.md
+  role: context-rules
+  sha256: 3c69c680e2b8a21a30b58e0b9ac8130b677bd5f363c4f4531509fd6f5fb9715f
+  component_id: routing-context
+- path: rules/memory-system.md
+  role: memory-policy
+  sha256: 7c4b30f64c3438ebe06d2666c3a472ada6fb9f8f068326446791b243a26d4d3c
+  component_id: memory-system
+- path: skills/output-control-layer/SKILL.md
+  role: skill
+  sha256: d9ad54fb9868dd4f9f35a6da80736a6c1cadaeff9375d4abb91aac60993788ca
+  component_id: output-control
+- path: skills/output-control-layer/TWO-STAGE.md
+  role: skill-reference
+  sha256: 65e0f3ea1c15adb197fa410cc42abbc183b1925220f8f76cabda59273d23d795
+  component_id: output-control
+- path: skills/closeout/SKILL.md
+  role: skill
+  sha256: 4b913551ee6c664a59cfe10bb8692e62201535afcf5ce5cfe978f2b59c9eabe8
+  component_id: closeout
+- path: skills/closeout/README.md
+  role: skill-reference
+  sha256: e9e6c27fa11f299fb03e3fc0368302d6f7685d6495b0c248f52fa9ad08ad84f5
+  component_id: closeout
+- path: templates/memory/MEMORY.md
+  role: memory-template
+  sha256: 8dabdf9d2196ca24b4c1b3b659c00459da4a6337609ef6c17a98bdc5b71b90a5
+- path: templates/memory/workspace-brief.md
+  role: memory-template
+  sha256: e8711c60d45574b6adbb2a4a4f1fb301fa498ac43098d202dbbe323e360288a3
+- path: templates/memory/workspace-map.md
+  role: memory-template
+  sha256: 97103372d74b7af9c89b2f471892ddd9e2cafb5f554e296e26e67c2c5bd34f7a
+- path: templates/memory/current-position.md
+  role: memory-template
+  sha256: 5d98bafc095f940c4e19637bce47d684bb4493a87036c1629150299fa04e7f83
+- path: templates/memory/timeline.md
+  role: memory-template
+  sha256: 066294480be48a1516e5f1754d94318b08d9489e6cbd944bbe9b178adba1b6fe
+- path: templates/memory/timeline-archive.md
+  role: memory-template
+  sha256: be4db0852510d64fd4ef1398ee3fa798efb1b49b2eeed7819ab8d13c21260633
+- path: templates/memory/decisions.md
+  role: memory-template
+  sha256: 955a27d365fb0949dd76e1a21a01e95cf0c5d631c4f1faec00a4896fb9714663
+- path: templates/memory/lessons.md
+  role: memory-template
+  sha256: 60b1a9ef4ac5d34a5d9d7894545cf3261d2b4d53b030185b4077632030e12041
+- path: templates/memory/lessons-archive.md
+  role: memory-template
+  sha256: 30c2e1f3af4aab2a18c57ed3aca6f618ad1666968eb45c3c329fd0cfcbf23e17
+- path: templates/memory/tasks/INDEX.md
+  role: memory-template
+  sha256: 96177c6d8ee6d0fe0e7ac64d4df1c1fd917686774a731dd791cb4e582e063038
+- path: tools/memory/check_map.py
+  role: memory-tool
+  sha256: 1b53bed3557a3052a97157e814ab38485ef34c5b65c84eeb8ab51ef1b81807ee
+- path: tools/memory/memory_gc.py
+  role: memory-tool
+  sha256: eec4869451954b0509043412c5df9f8e780a7040c4dce41e8b16b08992af64ed
+- path: tools/memory/lessons_gc.py
+  role: memory-tool
+  sha256: efe4fb28226339c4a33950fe669f0f83525210b5076b798ec15738136cdcf470
+- path: tools/memory/organize.py
+  role: workspace-tool
+  sha256: 06c2d4348173c67330eb97f4120ae742624455b2c4d2fd886ff8a5daa7d4b4fe
+- path: hooks/HOOKS.yaml
+  role: hook-catalog
+  sha256: 8631f37f9d4e7c44076cfe5a3a4abcbc89646b0cae86da89e826dc197029b813
+- path: hooks/inject_output_control.py
+  role: hook
+  sha256: 1bff5190da8c71acef2aacc0f0058f81c5ce9501d6d3b5f7b1f7ffd48add2acc
+- path: hooks/inject_output_control_codex.py
+  role: hook
+  sha256: b47c8143a37b4e671cb7a64ef2a1d363259bc4e5ee8d3b5910b85b4f40490d9b
+- path: hooks/guard_dangerous_bash.py
+  role: hook
+  sha256: ffe9988436ff8735b2d5e749c566dcf173b3f6513010dea7a7f64fa8f868fd07
+- path: hooks/guard_edit_needs_read.py
+  role: hook
+  sha256: 4640f81b17f818d1eb75ec4a40bd60742e6bc6be6d52fd0f01ddbdf069cd4bb7
+- path: hooks/guard_overexecute.py
+  role: hook
+  sha256: dfd515249a1be68c4c814db998487fa4fce5e20aef4ffee200b21a4e70695436
+- path: hooks/record_read_files.py
+  role: hook
+  sha256: 8113f14ae531bd473aac3184b2a93bb6479f79d3e8cf51e99deff30e9031752f
+- path: hooks/record_user_prompt.py
+  role: hook
+  sha256: 60d9c7984be917d51604dd3389f965a2278d88b38098d8c095d17d0d78235b5e
+- path: hooks/nudge_subagent_dispatch.py
+  role: hook
+  sha256: b0b2daa4af1b57e05e57707cbfeb2bb0abd11389d59af777d98532335703125a
+- path: hooks/auto_checkpoint.py
+  role: hook
+  sha256: aec76e6f5d51232235a161438e7aa28deb5b1c74e2571f9ea83ac4aba628b9c8
+- path: hooks/memory_nudge.py
+  role: hook
+  sha256: dcd82bd1994b0a6e3de845b267b233fb8e1bf63ca258e4706ae83814e6df3cc3
+- path: runtime/common/HARNESS.md.tmpl
+  role: runtime-entry-template
+  sha256: a2582b02743854b92893d31f600c2ddf38a1494c2e3f970e99efab20091e5141
+- path: runtime/codex/AGENTS.md.tmpl
+  role: runtime-entry-template
+  sha256: 1879348f899b0fb92b33da30751bae62dbe9edf99b1969cb9a70cb28d8127602
+- path: runtime/codex/hooks.json.tmpl
+  role: hook-registration-template
+  sha256: 14042488d2c830bb476ff23718dd2535357ab47ae09c0d444beb5034992dc305
+- path: runtime/codex/ADAPTER.md
+  role: runtime-adapter
+  sha256: 520818a2e39c22a1e8059806ea7b0ef1a3a480d31baf106d3621383a3934eec7
+  component_id: runtime-adapter-codex
+- path: runtime/claude/CLAUDE.md.tmpl
+  role: runtime-entry-template
+  sha256: b66f171e6552f2b6ccfdea3a7c782dd884e0950648a807470fe059670fb55c62
+- path: runtime/claude/settings.hooks.json.tmpl
+  role: hook-registration-template
+  sha256: e4c4ff87b5ebcdbd8c4210a6cfadbcaba5a70002bae31defd36f1802f5adee73
+- path: runtime/claude/ADAPTER.md
+  role: runtime-adapter
+  sha256: e1eee305c791752fa3a6b3b869d967a9bd1704f8a9d86ed440177e9913a9cff4
+  component_id: runtime-adapter-claude
+- path: optional/input-capture/README.md
+  role: optional-component
+  sha256: d03d3eaf6448d24cf92ff3a45df43fbc2bffe110859e96efb544610cd1a040e7
+- path: optional/input-capture/capture_layer/__init__.py
+  role: optional-component
+  sha256: 30fbbd5e8ef7e8b65f6d0f28f9eebc60f1a7a65aa91b9ec2701929d430064438
+- path: optional/input-capture/capture_layer/adapters.py
+  role: optional-component
+  sha256: 80d4887bc7a24e0a427bdef022f15e3ffede90038f3d56e36f3960fea80c2e6c
+- path: optional/input-capture/scripts/bridge_user_prompt_to_capture.py
+  role: optional-hook
+  sha256: 1947eddf471119814fe25dce7c4de88273234f4881283da65a280d603559257f
+- path: optional/input-capture/scripts/capture_runtime_prompt.py
+  role: optional-tool
+  sha256: a938e40f018c8116551318f964dd851e8ed4317b057e56169ecb076327d529b3
+- path: optional/input-capture/scripts/capture_user_input.py
+  role: optional-tool
+  sha256: d91628f2e3c1c882eac9446f204ea5ef1cfdc67460d32354f13d867881230e5e
+excludes:
+- real-memory
+- task-history
+- cross-device-state
+- credentials
+- device-config
+- runtime-private-config
+- input-capture-data

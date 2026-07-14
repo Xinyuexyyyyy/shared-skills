@@ -1,24 +1,33 @@
 schema_version: "1"
 kind: workspace
 id: livewithopencove-example
-version: 1.1.0
+version: 2.0.0
 locale: zh-CN
 entrypoints:
   - ../AGENTS.md
   - ../.claude/CLAUDE.md
 harness_entrypoint: HARNESS.md
 bundles:
-  - id: core-workspace-v1
+  - id: core-workspace-v2
     version: 0.1.0
-    path: bundles/core-workspace-v1
+    path: bundles/core-workspace-v2
 skills:
   - id: example-status
     path: skills/example-status/SKILL.md
+  - id: output-control-layer
+    path: skills/output-control-layer/SKILL.md
+  - id: closeout
+    path: skills/closeout/SKILL.md
 runtime_adapters:
   codex:
     - ../.agents/skills/example-status/SKILL.md
+    - ../.agents/skills/output-control-layer/SKILL.md
+    - ../.agents/skills/closeout/SKILL.md
   claude:
     - ../.claude/skills/example-status/SKILL.md
+    - ../.claude/skills/output-control-layer/SKILL.md
+    - ../.claude/skills/closeout/SKILL.md
 private_state:
   excluded_paths:
     - ../.claude/memory
+    - ../.claude/checkpoints

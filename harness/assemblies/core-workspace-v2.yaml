@@ -1,0 +1,204 @@
+schema_version: "1"
+kind: bundle-source
+id: core-workspace-v2
+version: 0.1.0
+status: draft
+description: Full reusable workspace harness with workflow, skills, memory tools, hooks, and runtime templates
+runtime: neutral
+entrypoint: rules/workflow.md
+capability_map: CAPABILITY-MAP.yaml
+workflow:
+  id: single-turn-workflow
+  version: 1.0.0
+  stages:
+    - input-hygiene
+    - digest
+    - broad-route
+    - theme-adapter
+    - artifact-gate
+    - execution
+    - verification
+    - output-control
+    - closeout
+    - inspiration-manual-only
+memory_policy:
+  private_root: .claude/memory
+  lazy_load: true
+  write_requires_confirmation: true
+  checkpoint_is_private_memory: false
+input_capture:
+  included: true
+  enabled: false
+runtime_adapters:
+  codex: runtime/codex/AGENTS.md.tmpl
+  claude: runtime/claude/CLAUDE.md.tmpl
+hooks:
+  catalog: hooks/HOOKS.yaml
+  codex_registration: runtime/codex/hooks.json.tmpl
+  claude_registration: runtime/claude/settings.hooks.json.tmpl
+checks:
+  structure: scripts/validate-harness.sh
+  negative_tests: tests/test-validate-harness.sh
+  capability_parity: tests/test-full-capability-parity.sh
+  hook_behavior: tests/test-runtime-hooks.py
+  memory_tools: tests/test-memory-tools.sh
+files:
+  - source: CAPABILITY-MAP.yaml
+    path: CAPABILITY-MAP.yaml
+    role: capability-map
+  - source: components/workflow/WORKFLOW.md
+    path: rules/workflow.md
+    role: workflow-contract
+    component_id: workflow
+  - source: components/routing-context/ROUTING.md
+    path: rules/ROUTING.md
+    role: routing-rules
+    component_id: routing-context
+  - source: components/routing-context/CONTEXT-SPEC.md
+    path: rules/CONTEXT-SPEC.md
+    role: context-rules
+    component_id: routing-context
+  - source: components/memory-system/RULES.md
+    path: rules/memory-system.md
+    role: memory-policy
+    component_id: memory-system
+  - source: components/output-control/skill/SKILL.md
+    path: skills/output-control-layer/SKILL.md
+    role: skill
+    component_id: output-control
+  - source: components/output-control/skill/TWO-STAGE.md
+    path: skills/output-control-layer/TWO-STAGE.md
+    role: skill-reference
+    component_id: output-control
+  - source: components/closeout/skill/SKILL.md
+    path: skills/closeout/SKILL.md
+    role: skill
+    component_id: closeout
+  - source: components/closeout/skill/README.md
+    path: skills/closeout/README.md
+    role: skill-reference
+    component_id: closeout
+  - source: components/memory-system/templates/MEMORY.md
+    path: templates/memory/MEMORY.md
+    role: memory-template
+  - source: components/memory-system/templates/workspace-brief.md
+    path: templates/memory/workspace-brief.md
+    role: memory-template
+  - source: components/memory-system/templates/workspace-map.md
+    path: templates/memory/workspace-map.md
+    role: memory-template
+  - source: components/memory-system/templates/current-position.md
+    path: templates/memory/current-position.md
+    role: memory-template
+  - source: components/memory-system/templates/timeline.md
+    path: templates/memory/timeline.md
+    role: memory-template
+  - source: components/memory-system/templates/timeline-archive.md
+    path: templates/memory/timeline-archive.md
+    role: memory-template
+  - source: components/memory-system/templates/decisions.md
+    path: templates/memory/decisions.md
+    role: memory-template
+  - source: components/memory-system/templates/lessons.md
+    path: templates/memory/lessons.md
+    role: memory-template
+  - source: components/memory-system/templates/lessons-archive.md
+    path: templates/memory/lessons-archive.md
+    role: memory-template
+  - source: components/memory-system/templates/tasks/INDEX.md
+    path: templates/memory/tasks/INDEX.md
+    role: memory-template
+  - source: components/memory-system/tools/check_map.py
+    path: tools/memory/check_map.py
+    role: memory-tool
+  - source: components/memory-system/tools/memory_gc.py
+    path: tools/memory/memory_gc.py
+    role: memory-tool
+  - source: components/memory-system/tools/lessons_gc.py
+    path: tools/memory/lessons_gc.py
+    role: memory-tool
+  - source: components/memory-system/tools/organize.py
+    path: tools/memory/organize.py
+    role: workspace-tool
+  - source: components/runtime-hooks/HOOKS.yaml
+    path: hooks/HOOKS.yaml
+    role: hook-catalog
+  - source: components/runtime-hooks/hooks/inject_output_control.py
+    path: hooks/inject_output_control.py
+    role: hook
+  - source: components/runtime-hooks/hooks/inject_output_control_codex.py
+    path: hooks/inject_output_control_codex.py
+    role: hook
+  - source: components/runtime-hooks/hooks/guard_dangerous_bash.py
+    path: hooks/guard_dangerous_bash.py
+    role: hook
+  - source: components/runtime-hooks/hooks/guard_edit_needs_read.py
+    path: hooks/guard_edit_needs_read.py
+    role: hook
+  - source: components/runtime-hooks/hooks/guard_overexecute.py
+    path: hooks/guard_overexecute.py
+    role: hook
+  - source: components/runtime-hooks/hooks/record_read_files.py
+    path: hooks/record_read_files.py
+    role: hook
+  - source: components/runtime-hooks/hooks/record_user_prompt.py
+    path: hooks/record_user_prompt.py
+    role: hook
+  - source: components/runtime-hooks/hooks/nudge_subagent_dispatch.py
+    path: hooks/nudge_subagent_dispatch.py
+    role: hook
+  - source: components/runtime-hooks/hooks/auto-checkpoint.py
+    path: hooks/auto_checkpoint.py
+    role: hook
+  - source: components/runtime-hooks/hooks/memory-nudge.py
+    path: hooks/memory_nudge.py
+    role: hook
+  - source: components/runtime-adapters/common/HARNESS.md.tmpl
+    path: runtime/common/HARNESS.md.tmpl
+    role: runtime-entry-template
+  - source: components/runtime-adapters/codex/AGENTS.md.tmpl
+    path: runtime/codex/AGENTS.md.tmpl
+    role: runtime-entry-template
+  - source: components/runtime-adapters/codex/hooks.json.tmpl
+    path: runtime/codex/hooks.json.tmpl
+    role: hook-registration-template
+  - source: components/runtime-adapters/codex/ADAPTER.md
+    path: runtime/codex/ADAPTER.md
+    role: runtime-adapter
+    component_id: runtime-adapter-codex
+  - source: components/runtime-adapters/claude/CLAUDE.md.tmpl
+    path: runtime/claude/CLAUDE.md.tmpl
+    role: runtime-entry-template
+  - source: components/runtime-adapters/claude/settings.hooks.json.tmpl
+    path: runtime/claude/settings.hooks.json.tmpl
+    role: hook-registration-template
+  - source: components/runtime-adapters/claude/ADAPTER.md
+    path: runtime/claude/ADAPTER.md
+    role: runtime-adapter
+    component_id: runtime-adapter-claude
+  - source: components/input-capture/README.md
+    path: optional/input-capture/README.md
+    role: optional-component
+  - source: components/input-capture/capture_layer/__init__.py
+    path: optional/input-capture/capture_layer/__init__.py
+    role: optional-component
+  - source: components/input-capture/capture_layer/adapters.py
+    path: optional/input-capture/capture_layer/adapters.py
+    role: optional-component
+  - source: components/input-capture/scripts/bridge_user_prompt_to_capture.py
+    path: optional/input-capture/scripts/bridge_user_prompt_to_capture.py
+    role: optional-hook
+  - source: components/input-capture/scripts/capture_runtime_prompt.py
+    path: optional/input-capture/scripts/capture_runtime_prompt.py
+    role: optional-tool
+  - source: components/input-capture/scripts/capture_user_input.py
+    path: optional/input-capture/scripts/capture_user_input.py
+    role: optional-tool
+excludes:
+  - real-memory
+  - task-history
+  - cross-device-state
+  - credentials
+  - device-config
+  - runtime-private-config
+  - input-capture-data

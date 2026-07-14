@@ -1,0 +1,75 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON}} harness/hooks/inject_output_control.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON}} harness/hooks/record_user_prompt.py",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON}} harness/hooks/guard_dangerous_bash.py",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON}} harness/hooks/guard_edit_needs_read.py",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON}} harness/hooks/guard_overexecute.py",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON}} harness/hooks/record_read_files.py",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PYTHON}} harness/hooks/memory_nudge.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "{{PYTHON}} harness/hooks/nudge_subagent_dispatch.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

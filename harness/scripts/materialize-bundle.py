@@ -79,10 +79,12 @@ def render(assembly_path: Path, output: Path, root: Path) -> None:
         "description",
         "runtime",
         "entrypoint",
+        "capability_map",
         "workflow",
         "memory_policy",
         "input_capture",
         "runtime_adapters",
+        "hooks",
         "checks",
     )
     manifest: dict[str, Any] = {"schema_version": "1", "kind": "bundle"}

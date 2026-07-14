@@ -1,0 +1,62 @@
+schema_version: "1"
+kind: hook-catalog
+hooks:
+  - id: inject-output-control-claude
+    file: hooks/inject_output_control.py
+    runtime: claude
+    event: UserPromptSubmit
+    default_enabled: true
+  - id: inject-output-control-codex
+    file: hooks/inject_output_control_codex.py
+    runtime: codex
+    event: SessionStart
+    default_enabled: true
+  - id: record-user-prompt
+    file: hooks/record_user_prompt.py
+    runtime: claude
+    event: UserPromptSubmit
+    default_enabled: true
+  - id: guard-dangerous-bash
+    file: hooks/guard_dangerous_bash.py
+    runtime: claude
+    event: PreToolUse
+    default_enabled: true
+  - id: guard-edit-needs-read
+    file: hooks/guard_edit_needs_read.py
+    runtime: claude
+    event: PreToolUse
+    default_enabled: true
+  - id: guard-overexecute
+    file: hooks/guard_overexecute.py
+    runtime: claude
+    event: PreToolUse
+    default_enabled: true
+  - id: record-read-files
+    file: hooks/record_read_files.py
+    runtime: claude
+    event: PostToolUse
+    default_enabled: true
+  - id: nudge-subagent-dispatch
+    file: hooks/nudge_subagent_dispatch.py
+    runtime: claude
+    event: Stop
+    default_enabled: true
+  - id: auto-checkpoint
+    file: hooks/auto_checkpoint.py
+    runtime: claude
+    event: PostToolUse|Stop
+    default_enabled: false
+  - id: memory-nudge
+    file: hooks/memory_nudge.py
+    runtime: claude
+    event: Stop
+    default_enabled: true
+  - id: input-capture
+    file: optional/input-capture/scripts/bridge_user_prompt_to_capture.py
+    runtime: claude|codex
+    event: UserPromptSubmit
+    default_enabled: false
+
+runtime_difference:
+  codex: Rules enforce tool guards when equivalent lifecycle hooks are unavailable.
+  claude: Hook registration enables injection, recorders, guards, and reminders.
