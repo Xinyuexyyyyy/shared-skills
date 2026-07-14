@@ -331,8 +331,9 @@ workspace/
 | `core-workspace-v1@0.1.0` | 已物化，状态为 `draft` |
 | LiveWithOpenCove 风格示例 | 已切换到核心 bundle |
 | 结构检查、校验值、负向测试 | 已通过本机验证 |
-| 真实 Codex、Claude 新会话烟测 | 待执行 |
-| 存储镜像发布 | 未执行 |
+| Win Codex、Claude 独立示例新会话烟测 | 已通过 |
+| Win 用户根全局 Harness 接入 | 未执行，与独立示例分开处理 |
+| 存储镜像草稿副本 | 已生成并完成提交号、校验值复核 |
 | 正式发布版本 | 尚未发布 |
 
 在以下条件全部满足前，不得把 `core-workspace-v1` 标记为稳定：
