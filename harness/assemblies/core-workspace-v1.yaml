@@ -1,0 +1,93 @@
+schema_version: "1"
+kind: bundle-source
+id: core-workspace-v1
+version: 0.1.0
+status: draft
+description: Reusable workspace workflow, output control, routing, memory, closeout, and runtime adapters
+runtime: neutral
+entrypoint: rules/workflow.md
+workflow:
+  id: single-turn-workflow
+  version: 1.0.0
+  stages:
+    - input-hygiene
+    - digest
+    - broad-route
+    - theme-adapter
+    - artifact-gate
+    - execution
+    - verification
+    - output-control
+    - closeout
+    - inspiration-manual-only
+memory_policy:
+  private_root: .claude/memory
+  lazy_load: true
+  write_requires_confirmation: true
+input_capture:
+  enabled: false
+runtime_adapters:
+  codex: adapters/codex.md
+  claude: adapters/claude.md
+checks:
+  structure: scripts/validate-harness.sh
+  negative_tests: tests/test-validate-harness.sh
+files:
+  - source: components/workflow/WORKFLOW.md
+    path: rules/workflow.md
+    role: workflow-contract
+    component_id: workflow
+  - source: components/output-control/RULES.md
+    path: rules/output-control.md
+    role: output-control
+    component_id: output-control
+  - source: components/routing-context/RULES.md
+    path: rules/routing-context.md
+    role: routing-context
+    component_id: routing-context
+  - source: components/memory-system/RULES.md
+    path: rules/memory-system.md
+    role: memory-policy
+    component_id: memory-system
+  - source: components/closeout/RULES.md
+    path: rules/closeout.md
+    role: closeout
+    component_id: closeout
+  - source: components/runtime-adapters/codex/ADAPTER.md
+    path: adapters/codex.md
+    role: runtime-adapter
+    component_id: runtime-adapter-codex
+  - source: components/runtime-adapters/claude/ADAPTER.md
+    path: adapters/claude.md
+    role: runtime-adapter
+    component_id: runtime-adapter-claude
+  - source: components/memory-system/templates/MEMORY.md
+    path: templates/memory/MEMORY.md
+    role: memory-template
+  - source: components/memory-system/templates/workspace-brief.md
+    path: templates/memory/workspace-brief.md
+    role: memory-template
+  - source: components/memory-system/templates/workspace-map.md
+    path: templates/memory/workspace-map.md
+    role: memory-template
+  - source: components/memory-system/templates/current-position.md
+    path: templates/memory/current-position.md
+    role: memory-template
+  - source: components/memory-system/templates/timeline.md
+    path: templates/memory/timeline.md
+    role: memory-template
+  - source: components/memory-system/templates/decisions.md
+    path: templates/memory/decisions.md
+    role: memory-template
+  - source: components/memory-system/templates/lessons.md
+    path: templates/memory/lessons.md
+    role: memory-template
+  - source: components/memory-system/templates/tasks/INDEX.md
+    path: templates/memory/tasks/INDEX.md
+    role: memory-template
+excludes:
+  - real-memory
+  - cross-device-state
+  - credentials
+  - runtime-private-config
+  - input-capture

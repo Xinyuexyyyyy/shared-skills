@@ -1,0 +1,22 @@
+schema_version: "1"
+kind: bundle
+id: runtime-baseline
+version: 1.0.0
+status: stable
+description: Runtime-neutral operating baseline
+runtime: neutral
+entrypoint: rules/operating.md
+files:
+  - path: rules/operating.md
+    role: operating-rules
+    sha256: 795e5bac28b9f5e8c77d12a56fd10ce39f60ea21cca3f26e5bdcb3ee537da1ca
+  - path: rules/context.md
+    role: context-rules
+    sha256: 143c38d621afc29f940bf658c97addd3106cee860b0b3fde2c03548a4cba7ab8
+  - path: rules/delivery.md
+    role: delivery-rules
+    sha256: f36339cf41334a517867e7758d0779c84b4924ce3c829eb96dd8c33158449795
+excludes:
+  - memory
+  - credentials
+  - runtime-config

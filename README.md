@@ -1,7 +1,11 @@
 # shared-skills
 
 > 25 个 AI agent skill，按调研/任务/输出/运维四层组网。Mac 和 Win 通过 GitHub 同步同一份技能池。
-> 这是 [LiveWithOpenCove](https://github.com/Xinyuexyyyyy/LiveWithOpenCove) 工作区方法的**技能引擎**——LiveWithOpenCove 管记忆和规则，这里管技能和路由。
+> 这是 [LiveWithOpenCove](https://github.com/Xinyuexyyyyy/LiveWithOpenCove) 工作区方法的**共享能力源**——工作区保存私有记忆和薄入口，这里管理可复用 skills、路由与 harness。
+
+## Reusable Harness
+
+可复用的 agent 工作规则、版本化 bundles、运行时薄适配器和 LiveWithOpenCove 风格示例工作区统一放在 [`harness/`](harness/README.md)。Harness 与业务 skills 分开管理，不包含私有记忆、凭证或设备配置。
 
 ---
 

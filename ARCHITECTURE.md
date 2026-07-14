@@ -16,6 +16,7 @@
 | [EXPORTS.md](EXPORTS.md) | 权威源→开源仓库单向导出登记 |
 | [DEVICES.md](DEVICES.md) | 设备与连接权威清单（Win/ECS/userysys，实测） |
 | [DIRECTORY-SPEC.md](DIRECTORY-SPEC.md) | 工作区目录命名规范 |
+| [harness/README.md](harness/README.md) | 可复用 harness、版本化 bundles 与示例工作区 |
 
 ---
 
@@ -59,6 +60,7 @@
 ├── EXPORTS.md                      # 单向导出登记
 ├── DEVICES.md                      # 设备连接清单（实测）
 ├── DIRECTORY-SPEC.md               # 目录命名规范
+├── harness/                        # 可复用 harness 方法、bundle、示例和校验
 │
 │   # ===== 调研层（8） =====
 ├── deep-research/          # 调研总入口 v2.1

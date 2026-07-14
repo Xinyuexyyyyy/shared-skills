@@ -1,0 +1,94 @@
+schema_version: '1'
+kind: bundle
+id: core-workspace-v1
+version: 0.1.0
+status: draft
+description: Reusable workspace workflow, output control, routing, memory, closeout,
+  and runtime adapters
+runtime: neutral
+entrypoint: rules/workflow.md
+workflow:
+  id: single-turn-workflow
+  version: 1.0.0
+  stages:
+  - input-hygiene
+  - digest
+  - broad-route
+  - theme-adapter
+  - artifact-gate
+  - execution
+  - verification
+  - output-control
+  - closeout
+  - inspiration-manual-only
+memory_policy:
+  private_root: .claude/memory
+  lazy_load: true
+  write_requires_confirmation: true
+input_capture:
+  enabled: false
+runtime_adapters:
+  codex: adapters/codex.md
+  claude: adapters/claude.md
+checks:
+  structure: scripts/validate-harness.sh
+  negative_tests: tests/test-validate-harness.sh
+files:
+- path: rules/workflow.md
+  role: workflow-contract
+  sha256: deb5a62373fa3e393b24d546abded5e50c63298d4878ed100a8e7fdf40f8d5be
+  component_id: workflow
+- path: rules/output-control.md
+  role: output-control
+  sha256: c5a437b4d5d8f52bd635a6bf4c89cefee718f2bc5eb68dab0824bcae4aee3f12
+  component_id: output-control
+- path: rules/routing-context.md
+  role: routing-context
+  sha256: 58a2324d1100ed7a71b3d06ce8e1902a9cb94db8f2d21dd32ed6c61f88f1540b
+  component_id: routing-context
+- path: rules/memory-system.md
+  role: memory-policy
+  sha256: 250f48b37d52d90a365efca3d8d51d4786f6f662ecb8bf3be8d4f16b1a2a15a3
+  component_id: memory-system
+- path: rules/closeout.md
+  role: closeout
+  sha256: d1060b024551b2b2f167a5df43b3802baaa6cc9375258d6029cbf8ac1a4a8f3b
+  component_id: closeout
+- path: adapters/codex.md
+  role: runtime-adapter
+  sha256: 520818a2e39c22a1e8059806ea7b0ef1a3a480d31baf106d3621383a3934eec7
+  component_id: runtime-adapter-codex
+- path: adapters/claude.md
+  role: runtime-adapter
+  sha256: e1eee305c791752fa3a6b3b869d967a9bd1704f8a9d86ed440177e9913a9cff4
+  component_id: runtime-adapter-claude
+- path: templates/memory/MEMORY.md
+  role: memory-template
+  sha256: 43c413f54065beab5253378d80660c33b51b882293556e9d38e62f9503e5c25f
+- path: templates/memory/workspace-brief.md
+  role: memory-template
+  sha256: c949b21388b973b3510698ed500cdb59fe0eb0d6694514047ea317e3e33ee8f5
+- path: templates/memory/workspace-map.md
+  role: memory-template
+  sha256: 5126eaa0bea6ecf94c69e8b093e6fc43b8ea28a1112b44b705f1f65e6a340015
+- path: templates/memory/current-position.md
+  role: memory-template
+  sha256: 11b7cf9356b234b53c9bebaa4bb405c4a8fc140b7aac2b517af646fff26b0920
+- path: templates/memory/timeline.md
+  role: memory-template
+  sha256: 788797c5ab8dced0af7218421e46ed5edb275906f589db6f6ba25dba0968a6da
+- path: templates/memory/decisions.md
+  role: memory-template
+  sha256: 4e84ad91c182284afa622f81f84d27d5446063d236a59982584fe67cb02f44a2
+- path: templates/memory/lessons.md
+  role: memory-template
+  sha256: 24c3e910dd982ad0a313b90425c4404e9fa85513382c01a45689438b73237e8b
+- path: templates/memory/tasks/INDEX.md
+  role: memory-template
+  sha256: 05f558fc80e24aa7e8b864b8a916b780a0735b2ebb2c832c2f29c0628d7a2fd3
+excludes:
+- real-memory
+- cross-device-state
+- credentials
+- runtime-private-config
+- input-capture
