@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "required": ["schema_version", "kind", "permissions", "release", "budgets", "owned_rules"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "kind": {"const": "policy-config"},
+    "permissions": {"type": "object", "required": ["writes_require_confirmed_scope", "dangerous_actions_require_authority", "irreversible_actions_require_authority"]},
+    "release": {"type": "object", "required": ["candidate_requires_static_tests", "stable_requires_dual_runtime_evidence", "rollback_target"]},
+    "budgets": {"type": "object", "required": ["agents_entry", "claude_entry", "harness_entry", "always_on", "memory_index", "core_yaml_each", "core_yaml_total", "method_card", "builtin_skill"]},
+    "owned_rules": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "policy"}}, "additionalProperties": false}}
+  },
+  "additionalProperties": false
+}

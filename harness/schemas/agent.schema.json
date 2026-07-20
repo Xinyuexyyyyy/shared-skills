@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "required": ["schema_version", "kind", "role", "default_language", "behavior", "owned_rules"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "kind": {"const": "agent-config"},
+    "role": {"type": "string"},
+    "default_language": {"type": "string"},
+    "behavior": {"type": "object", "required": ["scope", "user_ownership", "evolution"]},
+    "owned_rules": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "agent"}}, "additionalProperties": false}}
+  },
+  "additionalProperties": false
+}

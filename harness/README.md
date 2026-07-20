@@ -1,5 +1,17 @@
 # Reusable Harness
 
+## Harness v3 第一阶段：脚本优先治理基础
+
+`core-workspace-v3@0.1.0+draft` 是 v1/v2 之外的新增治理层，不删除也不替换旧 bundle。v3 将 Agent、workflow、memory、policy 和 capability 分成五个独立 YAML 配置域；Markdown 只保留运行时入口的短语义契约。
+
+从仓库根目录运行：`python harness/harnessctl validate`、`python harness/harnessctl assemble`、`python harness/harnessctl health --json`、`python harness/harnessctl doctor`。
+
+`validate` 检查 Schema、assembly、manifest 文件和 SHA-256、bundle 内外 checks、预算、legacy draft 与 hard-enforced 证据；`assemble` 确定性生成 v3 bundle；`health` 输出预算、能力分类、测试状态、release blocker、候选资格、稳定资格和回滚目标；`doctor` 只检查当前仓库可证明的运行环境与模板。
+
+当前 v3 已实现配置 Schema、确定性 assembly、manifest/检查路径校验、文件与文本预算、健康报告、静态负向测试、行为 fixture 和 draft 发布门。Codex/Claude 的 Turn Protocol 目前是 `contract-only`，真实新会话行为是 `unverified`；没有两端新会话证据时，`stable_eligible` 必须为 `false`。
+
+v3 回滚目标为 `core-workspace-v2@0.1.0+draft`。第一阶段不重构业务 skills、不持久化 Turn Envelope、不启用输入捕获，也不修改全局 Agent 配置。
+
 本目录是可复用 agent 运行规则的权威入口。它统一管理 agent 如何理解输入、选择能力、执行、验证、输出、维护工作区记忆及适配不同运行时。其中，**单次输出工作流不是建议文案，而是核心 bundle 的强制执行契约**。
 
 ## 1. 定位

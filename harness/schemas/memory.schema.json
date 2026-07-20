@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "required": ["schema_version", "kind", "private_root", "lazy_load", "candidate_write", "file_budget", "owned_rules"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "kind": {"const": "memory-config"},
+    "private_root": {"const": ".claude/memory"},
+    "lazy_load": {"type": "boolean"},
+    "candidate_write": {"type": "object", "required": ["enabled", "confirmation_required", "persist_turn_envelope"]},
+    "file_budget": {"type": "object", "required": ["index", "warning_lines", "hard_lines", "warning_bytes", "hard_bytes"]},
+    "owned_rules": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "memory"}}, "additionalProperties": false}}
+  },
+  "additionalProperties": false
+}

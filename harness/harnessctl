@@ -1,0 +1,572 @@
+#!/usr/bin/env python3
+"""Harness v3 script-first governance command line interface.
+
+This command only reads Harness source and generated bundles.  It never reads
+workspace memory, session history, credentials, device state, or runtime logs.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+try:
+    import yaml
+except ImportError as exc:
+    raise SystemExit("缺少 PyYAML。请安装 requirements.txt 中的依赖后重试。") from exc
+
+
+CONFIG_NAMES = ("agent", "workflow", "memory", "policy", "capabilities")
+LEGACY_BUNDLES = ("core-workspace-v1", "core-workspace-v2")
+ENFORCEMENT_LEVELS = {"hard-enforced", "contract-only", "eval-only", "unverified"}
+CHECK_SCOPES = {"bundle", "library-only"}
+SUPPORTED_REGISTRATIONS = {
+    "harnessctl.validate",
+    "harnessctl.assemble",
+    "harnessctl.health",
+    "harnessctl.doctor",
+}
+
+
+class HarnessError(Exception):
+    pass
+
+
+def fail(message: str) -> None:
+    raise HarnessError(message)
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def read_yaml(path: Path) -> dict[str, Any]:
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        fail(f"无法读取 YAML：{path}: {exc}")
+    if not isinstance(data, dict):
+        fail(f"YAML 顶层必须是映射：{path}")
+    return data
+
+
+def write_yaml(path: Path, data: dict[str, Any]) -> None:
+    text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+    path.write_bytes(text.encode("utf-8"))
+
+
+def relative_path(value: Any, base: Path, label: str) -> Path:
+    if not isinstance(value, str) or not value:
+        fail(f"{label} 必须是非空相对路径")
+    candidate = Path(value)
+    if candidate.is_absolute() or value.startswith("~"):
+        fail(f"{label} 不允许绝对路径：{value}")
+    resolved = (base / candidate).resolve()
+    try:
+        resolved.relative_to(base.resolve())
+    except ValueError:
+        fail(f"{label} 越出 Harness 根目录：{value}")
+    return resolved
+
+
+def type_matches(value: Any, type_name: str) -> bool:
+    return {
+        "object": isinstance(value, dict),
+        "array": isinstance(value, list),
+        "string": isinstance(value, str),
+        "integer": isinstance(value, int) and not isinstance(value, bool),
+        "boolean": isinstance(value, bool),
+        "null": value is None,
+    }.get(type_name, True)
+
+
+def validate_schema(value: Any, schema: dict[str, Any], location: str = "$") -> list[str]:
+    """Validate the JSON Schema subset used by the versioned v3 configs."""
+    errors: list[str] = []
+    expected = schema.get("type")
+    if isinstance(expected, list):
+        if not any(type_matches(value, item) for item in expected):
+            return [f"{location} 类型应为 {expected}"]
+    elif isinstance(expected, str) and not type_matches(value, expected):
+        return [f"{location} 类型应为 {expected}"]
+    if "const" in schema and value != schema["const"]:
+        errors.append(f"{location} 必须等于 {schema['const']!r}")
+    if "enum" in schema and value not in schema["enum"]:
+        errors.append(f"{location} 必须属于 {schema['enum']!r}")
+    if isinstance(value, dict):
+        properties = schema.get("properties", {})
+        for key in schema.get("required", []):
+            if key not in value:
+                errors.append(f"{location} 缺少必填字段 {key}")
+        if schema.get("additionalProperties") is False:
+            for key in value:
+                if key not in properties:
+                    errors.append(f"{location} 不允许字段 {key}")
+        for key, child in properties.items():
+            if key in value and isinstance(child, dict):
+                errors.extend(validate_schema(value[key], child, f"{location}.{key}"))
+    if isinstance(value, list):
+        min_items = schema.get("minItems")
+        if isinstance(min_items, int) and len(value) < min_items:
+            errors.append(f"{location} 至少需要 {min_items} 项")
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(value):
+                errors.extend(validate_schema(item, item_schema, f"{location}[{index}]"))
+    return errors
+
+
+def load_configs(root: Path) -> dict[str, dict[str, Any]]:
+    configs: dict[str, dict[str, Any]] = {}
+    for name in CONFIG_NAMES:
+        config_path = root / "config" / f"{name}.yaml"
+        schema_path = root / "schemas" / f"{name}.schema.json"
+        if not config_path.is_file():
+            fail(f"缺少规范配置：{config_path}")
+        if not schema_path.is_file():
+            fail(f"缺少配置 Schema：{schema_path}")
+        config = read_yaml(config_path)
+        try:
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            fail(f"无法读取 JSON Schema：{schema_path}: {exc}")
+        errors = validate_schema(config, schema)
+        if errors:
+            fail(f"配置 {name}.yaml 未通过 Schema：" + "；".join(errors))
+        configs[name] = config
+    return configs
+
+
+def validate_rule_owners(configs: dict[str, dict[str, Any]]) -> None:
+    seen: dict[str, str] = {}
+    for config_name, config in configs.items():
+        for rule in config.get("owned_rules", []):
+            rule_id = rule["id"]
+            owner = rule["owner"]
+            if owner != config_name:
+                fail(f"规则 {rule_id} 的规范所有者必须为 {config_name}，当前为 {owner}")
+            if rule_id in seen:
+                fail(f"规则 {rule_id} 出现重复规范所有者：{seen[rule_id]} 与 {owner}")
+            seen[rule_id] = owner
+
+
+def load_assembly(root: Path) -> dict[str, Any]:
+    path = root / "assemblies" / "core-workspace-v3.yaml"
+    if not path.is_file():
+        fail(f"缺少 v3 assembly：{path}")
+    assembly = read_yaml(path)
+    required = ("schema_version", "kind", "id", "version", "status", "files", "checks")
+    for key in required:
+        if key not in assembly:
+            fail(f"assembly 缺少字段 {key}")
+    if assembly["schema_version"] != "1" or assembly["kind"] != "bundle-source":
+        fail("v3 assembly schema_version 或 kind 无效")
+    if assembly["id"] != "core-workspace-v3" or assembly["version"] != "0.1.0":
+        fail("v3 assembly 标识或版本无效")
+    if assembly["status"] != "draft":
+        fail("v3 必须保持 draft")
+    return assembly
+
+
+def validate_assembly(root: Path, configs: dict[str, dict[str, Any]], assembly: dict[str, Any]) -> None:
+    declared_configs = assembly.get("configs")
+    if declared_configs != [f"config/{name}.yaml" for name in CONFIG_NAMES]:
+        fail("assembly 必须按固定顺序声明五份规范配置")
+    targets: set[str] = set()
+    for entry in assembly["files"]:
+        if not isinstance(entry, dict):
+            fail("assembly files 必须是映射列表")
+        source = relative_path(entry.get("source"), root, "assembly source")
+        target_value = entry.get("path")
+        if not isinstance(target_value, str) or not target_value:
+            fail("assembly file 缺少 path")
+        target = Path(target_value).as_posix()
+        if target in targets:
+            fail(f"assembly 含重复目标文件：{target}")
+        targets.add(target)
+        if not source.is_file():
+            fail(f"assembly 源文件不存在：{source}")
+    for check in assembly["checks"]:
+        validate_check_definition(root, check, None)
+    capabilities = configs["capabilities"]
+    for capability in capabilities["capabilities"]:
+        if capability["enforcement"] == "hard-enforced":
+            evidence = capability.get("evidence")
+            if not isinstance(evidence, dict):
+                fail(f"hard-enforced 能力缺少证据：{capability['id']}")
+            script = relative_path(evidence.get("script"), root, f"能力 {capability['id']} 脚本")
+            if not script.is_file():
+                fail(f"hard-enforced 能力脚本不存在：{capability['id']}")
+            if evidence.get("registration") not in SUPPORTED_REGISTRATIONS:
+                fail(f"hard-enforced 能力注册点无效：{capability['id']}")
+            tests = evidence.get("tests")
+            if not isinstance(tests, list) or not tests:
+                fail(f"hard-enforced 能力缺少测试：{capability['id']}")
+            for test in tests:
+                if not relative_path(test, root, f"能力 {capability['id']} 测试").is_file():
+                    fail(f"hard-enforced 能力测试不存在：{capability['id']}")
+
+
+def validate_check_definition(root: Path, check: Any, bundle_dir: Path | None) -> None:
+    if not isinstance(check, dict):
+        fail("manifest checks 必须是映射列表")
+    for key in ("id", "scope", "path", "command"):
+        if key not in check:
+            fail(f"check 缺少字段 {key}")
+    if check["scope"] not in CHECK_SCOPES:
+        fail(f"check scope 无效：{check['scope']}")
+    base = bundle_dir if check["scope"] == "bundle" else root
+    if base is None:
+        if check["scope"] == "bundle":
+            return
+        base = root
+    path = relative_path(check["path"], base, f"check {check['id']} path")
+    if not path.is_file():
+        fail(f"check 路径不存在：{check['id']} -> {path}")
+    command = check["command"]
+    if not isinstance(command, list) or not command or not all(isinstance(item, str) for item in command):
+        fail(f"check command 无效：{check['id']}")
+
+
+def manifest_payload(root: Path, configs: dict[str, dict[str, Any]], assembly: dict[str, Any], output: Path) -> dict[str, Any]:
+    files: list[dict[str, str]] = []
+    for entry in assembly["files"]:
+        target = Path(entry["path"])
+        path = output / target
+        files.append({
+            "path": target.as_posix(),
+            "role": entry.get("role", "asset"),
+            "sha256": sha256(path),
+        })
+    config_hash = hashlib.sha256(
+        "".join(sha256(root / "config" / f"{name}.yaml") for name in CONFIG_NAMES).encode("ascii")
+    ).hexdigest()
+    return {
+        "schema_version": "1",
+        "kind": "bundle",
+        "id": assembly["id"],
+        "version": assembly["version"],
+        "status": assembly["status"],
+        "description": assembly["description"],
+        "config_schema_version": configs["agent"]["schema_version"],
+        "source_config_hash": config_hash,
+        "entrypoint": "runtime/common/HARNESS.md.tmpl",
+        "configs": assembly["configs"],
+        "workflow": {
+            "states": configs["workflow"]["states"],
+            "turn_envelope": "schemas/turn-envelope.schema.json",
+        },
+        "runtime_adapters": assembly["runtime_adapters"],
+        "capabilities": "config/capabilities.yaml",
+        "checks": assembly["checks"],
+        "files": files,
+        "excludes": [
+            "real-memory", "task-history", "session-history", "credentials",
+            "device-state", "logs", "runtime-private-config",
+        ],
+    }
+
+
+def render_bundle(root: Path, output: Path) -> None:
+    configs = load_configs(root)
+    validate_rule_owners(configs)
+    assembly = load_assembly(root)
+    validate_assembly(root, configs, assembly)
+    output.mkdir(parents=True, exist_ok=True)
+    for entry in assembly["files"]:
+        source = relative_path(entry["source"], root, "assembly source")
+        target = relative_path(entry["path"], output, "assembly target")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+    write_yaml(output / "manifest.yaml", manifest_payload(root, configs, assembly, output))
+
+
+def tree_fingerprint(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted((item for item in root.rglob("*") if item.is_file()), key=lambda item: item.as_posix()):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def validate_bundle(root: Path, bundle: Path) -> None:
+    manifest_path = bundle / "manifest.yaml"
+    manifest = read_yaml(manifest_path)
+    for key in ("schema_version", "kind", "id", "version", "status", "files", "checks", "entrypoint"):
+        if key not in manifest:
+            fail(f"v3 manifest 缺少字段 {key}")
+    if (manifest["schema_version"], manifest["kind"], manifest["id"], manifest["version"], manifest["status"]) != (
+        "1", "bundle", "core-workspace-v3", "0.1.0", "draft",
+    ):
+        fail("v3 manifest 身份、版本或 draft 状态无效")
+    entrypoint = relative_path(manifest["entrypoint"], bundle, "bundle entrypoint")
+    if not entrypoint.is_file():
+        fail("v3 bundle entrypoint 不存在")
+    declared: set[str] = set()
+    for item in manifest["files"]:
+        if not isinstance(item, dict):
+            fail("manifest files 必须是映射列表")
+        for key in ("path", "role", "sha256"):
+            if key not in item:
+                fail(f"manifest file 缺少字段 {key}")
+        relative = Path(item["path"]).as_posix()
+        if relative in declared:
+            fail(f"manifest 含重复文件：{relative}")
+        declared.add(relative)
+        path = relative_path(relative, bundle, "manifest file")
+        if not path.is_file():
+            fail(f"manifest 文件不存在：{relative}")
+        if sha256(path) != item["sha256"]:
+            fail(f"manifest SHA-256 不一致：{relative}")
+    actual = {path.relative_to(bundle).as_posix() for path in bundle.rglob("*") if path.is_file()} - {"manifest.yaml"}
+    if actual != declared:
+        missing = sorted(declared - actual)
+        undeclared = sorted(actual - declared)
+        fail(f"bundle 文件声明不一致，缺少={missing}，未声明={undeclared}")
+    for check in manifest["checks"]:
+        validate_check_definition(root, check, bundle)
+
+
+def line_count(path: Path) -> int:
+    return len(path.read_text(encoding="utf-8").splitlines())
+
+
+def budget_items(root: Path, policy: dict[str, Any]) -> list[dict[str, Any]]:
+    bundle = root / "bundles" / "core-workspace-v3"
+    return [
+        {"id": "agents-entry", "paths": [bundle / "runtime/codex/AGENTS.md.tmpl"], **policy["budgets"]["agents_entry"]},
+        {"id": "claude-entry", "paths": [bundle / "runtime/claude/CLAUDE.md.tmpl"], **policy["budgets"]["claude_entry"]},
+        {"id": "harness-entry", "paths": [bundle / "runtime/common/HARNESS.md.tmpl"], **policy["budgets"]["harness_entry"]},
+        {"id": "always-on", "paths": [bundle / "config" / f"{name}.yaml" for name in CONFIG_NAMES], **policy["budgets"]["always_on"]},
+        {"id": "memory-index", "paths": [bundle / "templates/memory/MEMORY.md"], **policy["budgets"]["memory_index"]},
+        {"id": "core-yaml-total", "paths": [bundle / "config" / f"{name}.yaml" for name in CONFIG_NAMES], **policy["budgets"]["core_yaml_total"]},
+    ]
+
+
+def budget_report(root: Path, policy: dict[str, Any]) -> list[dict[str, Any]]:
+    report: list[dict[str, Any]] = []
+    for item in budget_items(root, policy):
+        paths = item.pop("paths")
+        existing = [path for path in paths if path.is_file()]
+        size = sum(path.stat().st_size for path in existing)
+        lines = sum(line_count(path) for path in existing)
+        severity = "ok"
+        if (item.get("hard_bytes") and size > item["hard_bytes"]) or (item.get("hard_lines") and lines > item["hard_lines"]):
+            severity = "error"
+        elif (item.get("warning_bytes") and size > item["warning_bytes"]) or (item.get("warning_lines") and lines > item["warning_lines"]):
+            severity = "warning"
+        report.append({"id": item["id"], "bytes": size, "lines": lines, "severity": severity, "paths": [path.as_posix() for path in existing]})
+    per_yaml = policy["budgets"]["core_yaml_each"]
+    bundle = root / "bundles" / "core-workspace-v3" / "config"
+    for path in sorted(bundle.glob("*.yaml")):
+        severity = "error" if path.stat().st_size > per_yaml["hard_bytes"] else "warning" if path.stat().st_size > per_yaml["warning_bytes"] else "ok"
+        report.append({"id": f"core-yaml:{path.name}", "bytes": path.stat().st_size, "lines": line_count(path), "severity": severity, "paths": [path.as_posix()]})
+    return report
+
+
+def validate_budgets(root: Path, configs: dict[str, dict[str, Any]]) -> None:
+    errors = [item for item in budget_report(root, configs["policy"]) if item["severity"] == "error"]
+    if errors:
+        fail("文件预算超过硬上限：" + ", ".join(item["id"] for item in errors))
+
+
+def validate_legacy(root: Path) -> None:
+    for bundle_id in LEGACY_BUNDLES:
+        manifest_path = root / "bundles" / bundle_id / "manifest.yaml"
+        if not manifest_path.is_file():
+            fail(f"兼容性 bundle 缺失：{bundle_id}")
+        if read_yaml(manifest_path).get("status") != "draft":
+            fail(f"兼容性 bundle 必须保持 legacy draft：{bundle_id}")
+
+
+def validate_project(root: Path) -> dict[str, dict[str, Any]]:
+    configs = load_configs(root)
+    validate_rule_owners(configs)
+    assembly = load_assembly(root)
+    validate_assembly(root, configs, assembly)
+    bundle = root / "bundles" / "core-workspace-v3"
+    if not bundle.is_dir():
+        fail("尚未组装 core-workspace-v3；请先运行 harnessctl assemble")
+    validate_bundle(root, bundle)
+    with tempfile.TemporaryDirectory(prefix="harness-v3-check-") as temporary:
+        expected = Path(temporary) / "core-workspace-v3"
+        render_bundle(root, expected)
+        if tree_fingerprint(expected) != tree_fingerprint(bundle):
+            fail("core-workspace-v3 与当前规范配置或 assembly 不一致")
+    validate_budgets(root, configs)
+    validate_legacy(root)
+    return configs
+
+
+def capability_report(configs: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {"id": item["id"], "runtime": item["runtime"], "enforcement": item["enforcement"], "evidence": item.get("evidence_level", "unverified")}
+        for item in configs["capabilities"]["capabilities"]
+    ]
+
+
+def collect_health(root: Path) -> dict[str, Any]:
+    blockers: list[str] = []
+    configs: dict[str, dict[str, Any]] = {}
+    try:
+        configs = validate_project(root)
+    except HarnessError as exc:
+        blockers.append(str(exc))
+        try:
+            configs = load_configs(root)
+        except HarnessError as config_exc:
+            blockers.append(str(config_exc))
+    policy = configs.get("policy", {}).get("budgets")
+    budgets = budget_report(root, configs["policy"]) if policy else []
+    blockers.extend(f"预算硬失败：{item['id']}" for item in budgets if item["severity"] == "error")
+    capabilities = capability_report(configs) if configs else []
+    runtime_evidence = root / "tests" / "runtime" / "evidence.json"
+    runtime_status = {"codex": "unverified", "claude": "unverified"}
+    if runtime_evidence.is_file():
+        runtime_status.update(json.loads(runtime_evidence.read_text(encoding="utf-8")))
+    stable_eligible = bool(runtime_status.get("codex") == "passed" and runtime_status.get("claude") == "passed" and not blockers)
+    behavior_ready = (root / "tests" / "behavior" / "cases.yaml").is_file() and runtime_status.get("codex") == "passed" and runtime_status.get("claude") == "passed"
+    candidate_eligible = not blockers and behavior_ready and all(item["severity"] != "error" for item in budgets)
+    check_paths: list[dict[str, Any]] = []
+    manifest_path = root / "bundles/core-workspace-v3/manifest.yaml"
+    if manifest_path.is_file():
+        try:
+            manifest = read_yaml(manifest_path)
+            bundle = manifest_path.parent
+            for check in manifest.get("checks", []):
+                base = bundle if check.get("scope") == "bundle" else root
+                path = base / str(check.get("path", ""))
+                check_paths.append({"id": check.get("id"), "scope": check.get("scope"), "path": path.as_posix(), "exists": path.is_file()})
+        except HarnessError as exc:
+            blockers.append(str(exc))
+    release_blockers = list(blockers)
+    if not behavior_ready:
+        release_blockers.append("行为测试或 Codex/Claude 真实新会话证据仍为 pending/unverified")
+    return {
+        "bundle": {"id": "core-workspace-v3", "version": "0.1.0", "status": "draft"},
+        "schema_version": configs.get("agent", {}).get("schema_version", "unavailable"),
+        "config_sizes": [{"name": name, "bytes": (root / "config" / f"{name}.yaml").stat().st_size} for name in CONFIG_NAMES if (root / "config" / f"{name}.yaml").is_file()],
+        "runtime_entries": [item for item in budgets if item["id"] in {"agents-entry", "claude-entry", "harness-entry"}],
+        "always_on_bytes": next((item["bytes"] for item in budgets if item["id"] == "always-on"), 0),
+        "budgets": budgets,
+        "checks": "passed" if not blockers else "blocked",
+        "check_paths": check_paths,
+        "capabilities": capabilities,
+        "undeclared_or_missing_execution": [item["id"] for item in capabilities if item["enforcement"] != "hard-enforced"],
+        "static_tests": "available",
+        "behavior_tests": "pending",
+        "runtime_evidence": runtime_status,
+        "release_blockers": release_blockers,
+        "candidate_eligible": candidate_eligible,
+        "stable_eligible": stable_eligible,
+        "rollback_target": "core-workspace-v2@0.1.0+draft",
+    }
+
+
+def run_validate(root: Path) -> int:
+    validate_project(root)
+    print("Harness v3 校验通过")
+    return 0
+
+
+def run_assemble(root: Path, check: bool) -> int:
+    configs = load_configs(root)
+    validate_rule_owners(configs)
+    assembly = load_assembly(root)
+    validate_assembly(root, configs, assembly)
+    output = root / "bundles" / "core-workspace-v3"
+    with tempfile.TemporaryDirectory(prefix="harness-v3-") as temporary:
+        expected = Path(temporary) / "core-workspace-v3"
+        render_bundle(root, expected)
+        if check:
+            if not output.is_dir() or tree_fingerprint(expected) != tree_fingerprint(output):
+                fail("core-workspace-v3 不是由当前配置确定性生成的")
+            print("core-workspace-v3 组装结果一致")
+            return 0
+        if output.exists():
+            shutil.rmtree(output)
+        shutil.copytree(expected, output)
+    validate_project(root)
+    print("已确定性组装 core-workspace-v3@0.1.0+draft")
+    return 0
+
+
+def run_health(root: Path, as_json: bool) -> int:
+    report = collect_health(root)
+    if as_json:
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+    else:
+        print(f"{report['bundle']['id']}@{report['bundle']['version']}+{report['bundle']['status']}")
+        print(f"候选资格：{report['candidate_eligible']}；稳定资格：{report['stable_eligible']}")
+        print("发布阻断项：")
+        for blocker in report["release_blockers"]:
+            print(f"- {blocker}")
+    return 0
+
+
+def run_doctor(root: Path) -> int:
+    configs: dict[str, dict[str, Any]] = {}
+    issues: list[str] = []
+    try:
+        configs = load_configs(root)
+    except HarnessError as exc:
+        issues.append(str(exc))
+    bash = shutil.which("bash")
+    bundle = root / "bundles" / "core-workspace-v3"
+    checks: list[dict[str, Any]] = []
+    if (bundle / "manifest.yaml").is_file():
+        for check in read_yaml(bundle / "manifest.yaml").get("checks", []):
+            base = bundle if check.get("scope") == "bundle" else root
+            path = base / str(check.get("path", ""))
+            checks.append({"id": check.get("id"), "scope": check.get("scope"), "exists": path.is_file()})
+    print("Harness v3 doctor")
+    print(f"Python：{sys.version.split()[0]}")
+    print(f"PyYAML：{yaml.__version__}")
+    print(f"Bash（PATH）：{'可用' if bash else '不可用'}")
+    print(f"Codex 模板：{(bundle / 'runtime/codex/AGENTS.md.tmpl').is_file()}")
+    print(f"Claude 模板：{(bundle / 'runtime/claude/CLAUDE.md.tmpl').is_file()}")
+    print("Checks：" + json.dumps(checks, ensure_ascii=False))
+    for item in capability_report(configs) if configs else []:
+        print(f"能力 {item['id']}：{item['enforcement']} / {item['evidence']}")
+    print("真实双运行时新会话证据：未验证")
+    for issue in issues:
+        print(f"问题：{issue}")
+    return 0 if not issues else 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="harnessctl")
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("validate")
+    assemble = subparsers.add_parser("assemble")
+    assemble.add_argument("--check", action="store_true")
+    health = subparsers.add_parser("health")
+    health.add_argument("--json", action="store_true", dest="as_json")
+    subparsers.add_parser("doctor")
+    args = parser.parse_args()
+    root = args.root.resolve()
+    try:
+        if args.command == "validate":
+            return run_validate(root)
+        if args.command == "assemble":
+            return run_assemble(root, args.check)
+        if args.command == "health":
+            return run_health(root, args.as_json)
+        return run_doctor(root)
+    except HarnessError as exc:
+        print(f"harnessctl 失败：{exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

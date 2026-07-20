@@ -1,0 +1,70 @@
+schema_version: "1"
+kind: workflow-config
+states:
+  - input
+  - resolved
+  - needs-user
+  - executing
+  - verifying
+  - deliverable
+  - partial
+  - blocked
+  - failed
+  - stopped
+  - closed
+  - candidate
+initial_state: input
+terminal_states:
+  - deliverable
+  - partial
+  - blocked
+  - failed
+  - stopped
+  - closed
+  - candidate
+transitions:
+  - from: input
+    to: resolved
+  - from: input
+    to: needs-user
+  - from: resolved
+    to: executing
+  - from: resolved
+    to: blocked
+  - from: needs-user
+    to: stopped
+  - from: executing
+    to: verifying
+  - from: executing
+    to: failed
+  - from: verifying
+    to: deliverable
+  - from: verifying
+    to: partial
+  - from: verifying
+    to: blocked
+  - from: deliverable
+    to: closed
+  - from: closed
+    to: candidate
+turn_envelope:
+  persistence: disabled
+  required:
+    - task_mode
+    - gap_owner
+    - resolution
+    - risk
+    - write_scope
+    - verification_required
+    - status
+closeout:
+  required:
+    - result
+    - shortest_acceptance
+    - unfinished
+    - adjacent_next_step
+owned_rules:
+  - id: turn-state-machine
+    owner: workflow
+  - id: closeout-contract
+    owner: workflow

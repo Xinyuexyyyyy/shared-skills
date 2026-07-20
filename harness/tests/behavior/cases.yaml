@@ -1,0 +1,15 @@
+schema_version: "1"
+kind: behavior-eval-cases
+status: pending
+cases:
+  - id: false-ask
+    expected_gap_owner: method
+    expected_status: pending
+  - id: false-autonomy
+    expected_gap_owner: authority
+    expected_status: pending
+  - id: verification-failure-completion-claim
+    expected_status: pending
+  - id: unconfirmed-memory-write
+    expected_gap_owner: authority
+    expected_status: pending

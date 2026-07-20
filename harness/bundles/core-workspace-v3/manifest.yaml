@@ -1,0 +1,106 @@
+schema_version: '1'
+kind: bundle
+id: core-workspace-v3
+version: 0.1.0
+status: draft
+description: Script-first v3 governance foundation with separated configuration and
+  honest runtime capability labels
+config_schema_version: '1'
+source_config_hash: de84582320e70815d69212e7d3e532109030d32507c7456889b131e5b6b427c3
+entrypoint: runtime/common/HARNESS.md.tmpl
+configs:
+- config/agent.yaml
+- config/workflow.yaml
+- config/memory.yaml
+- config/policy.yaml
+- config/capabilities.yaml
+workflow:
+  states:
+  - input
+  - resolved
+  - needs-user
+  - executing
+  - verifying
+  - deliverable
+  - partial
+  - blocked
+  - failed
+  - stopped
+  - closed
+  - candidate
+  turn_envelope: schemas/turn-envelope.schema.json
+runtime_adapters:
+  codex: runtime/codex/AGENTS.md.tmpl
+  claude: runtime/claude/CLAUDE.md.tmpl
+capabilities: config/capabilities.yaml
+checks:
+- id: bundle-layout
+  scope: bundle
+  path: checks/verify-layout.py
+  command:
+  - python
+  - checks/verify-layout.py
+- id: library-validation
+  scope: library-only
+  path: harnessctl
+  command:
+  - python
+  - harnessctl
+  - validate
+files:
+- path: config/agent.yaml
+  role: canonical-config
+  sha256: d5d04a358cc97687925a70f1ef175099a268715e853cd96e8f89db5af9e1c919
+- path: config/workflow.yaml
+  role: canonical-config
+  sha256: ce4c129293680397a53994b2b96a51a24ee4bd67def6711b6c024574eb6c628a
+- path: config/memory.yaml
+  role: canonical-config
+  sha256: c0050f7f9a93ec32fd68456ece518c04079140fb18e798e75439463961c265c7
+- path: config/policy.yaml
+  role: canonical-config
+  sha256: c85c18cfc272f205ea6d10c81262f5df7a6b3499309c8c5c20c77c42830f3b6b
+- path: config/capabilities.yaml
+  role: canonical-config
+  sha256: de7556d9e7ce9aeaf3fae2bc69f6482d4fde912a867e2e98a83c831a5df4a307
+- path: schemas/agent.schema.json
+  role: config-schema
+  sha256: 9137c7febc6dae68891a252748c4bb5ddef4918deef4dc7032ac1aab54a44958
+- path: schemas/workflow.schema.json
+  role: config-schema
+  sha256: 5b8c991c97e514d569b8d42915cdcf37129e1616c133521901a36d9dc3876691
+- path: schemas/memory.schema.json
+  role: config-schema
+  sha256: 7f258a6c5172708f7c241b15470af28d02fdeca2a66a70c1198557b37568eaf1
+- path: schemas/policy.schema.json
+  role: config-schema
+  sha256: 33f6dd5d27eaa4b9228ab7a530f5ad5f34525eb0b537da61be399757c6ff0c61
+- path: schemas/capabilities.schema.json
+  role: config-schema
+  sha256: 53e9cdc3c6be6c7dd2ba1cbc3ee0ee56e160f463912f1538002c12e489439ca0
+- path: schemas/turn-envelope.schema.json
+  role: turn-envelope-schema
+  sha256: b7dcbeaf5cbf59201022dc5059d4d64865df7909d73a1d158a3880a347921b3b
+- path: runtime/common/HARNESS.md.tmpl
+  role: runtime-entry-template
+  sha256: b8966dcb50902d6eeda08af72e8d1938c4cbb1a52a45bdc7af130fcc602c93e8
+- path: runtime/codex/AGENTS.md.tmpl
+  role: runtime-entry-template
+  sha256: df3e2c2b8fcbb9fe3bda34d5a2d44a3b1f1ee24b53383109142d54ce8171e16e
+- path: runtime/claude/CLAUDE.md.tmpl
+  role: runtime-entry-template
+  sha256: bb10f09e407e91cc13a97b91ff7ea1879ed440f03d57fcdd17cd0a82b78150e8
+- path: templates/memory/MEMORY.md
+  role: private-memory-template
+  sha256: bb1fee13a311948c04b57c1e1ef779df514236ca5c18986aea74a5f237c5a647
+- path: checks/verify-layout.py
+  role: bundle-check
+  sha256: ba955559ce87538277db9e89655ac26ba771af8fed67147412eaa12dad435ed6
+excludes:
+- real-memory
+- task-history
+- session-history
+- credentials
+- device-state
+- logs
+- runtime-private-config

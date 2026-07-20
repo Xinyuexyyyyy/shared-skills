@@ -1,0 +1,48 @@
+schema_version: "1"
+kind: capabilities-config
+capabilities:
+  - id: configuration-schema-validation
+    runtime: library
+    enforcement: hard-enforced
+    evidence_level: static-test
+    evidence:
+      script: harnessctl
+      registration: harnessctl.validate
+      tests:
+        - tests/test_harnessctl.py
+  - id: deterministic-assembly
+    runtime: library
+    enforcement: hard-enforced
+    evidence_level: static-test
+    evidence:
+      script: harnessctl
+      registration: harnessctl.assemble
+      tests:
+        - tests/test_harnessctl.py
+  - id: manifest-and-budget-validation
+    runtime: library
+    enforcement: hard-enforced
+    evidence_level: static-test
+    evidence:
+      script: harnessctl
+      registration: harnessctl.validate
+      tests:
+        - tests/test_harnessctl.py
+  - id: codex-turn-protocol
+    runtime: codex
+    enforcement: contract-only
+    evidence_level: unverified
+    note: 尚无真实新会话和等价 Hook 证据。
+  - id: claude-turn-protocol
+    runtime: claude
+    enforcement: contract-only
+    evidence_level: unverified
+    note: 尚无真实新会话和等价 Hook 证据。
+  - id: dual-runtime-behavior-evidence
+    runtime: library
+    enforcement: unverified
+    evidence_level: pending
+    note: 行为 fixture 已建立，真实运行时评测尚未执行。
+owned_rules:
+  - id: capability-enforcement-classification
+    owner: capabilities

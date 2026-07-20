@@ -1,0 +1,78 @@
+schema_version: "1"
+kind: bundle-source
+id: core-workspace-v3
+version: 0.1.0
+status: draft
+description: Script-first v3 governance foundation with separated configuration and honest runtime capability labels
+configs:
+  - config/agent.yaml
+  - config/workflow.yaml
+  - config/memory.yaml
+  - config/policy.yaml
+  - config/capabilities.yaml
+runtime_adapters:
+  codex: runtime/codex/AGENTS.md.tmpl
+  claude: runtime/claude/CLAUDE.md.tmpl
+checks:
+  - id: bundle-layout
+    scope: bundle
+    path: checks/verify-layout.py
+    command:
+      - python
+      - checks/verify-layout.py
+  - id: library-validation
+    scope: library-only
+    path: harnessctl
+    command:
+      - python
+      - harnessctl
+      - validate
+files:
+  - source: config/agent.yaml
+    path: config/agent.yaml
+    role: canonical-config
+  - source: config/workflow.yaml
+    path: config/workflow.yaml
+    role: canonical-config
+  - source: config/memory.yaml
+    path: config/memory.yaml
+    role: canonical-config
+  - source: config/policy.yaml
+    path: config/policy.yaml
+    role: canonical-config
+  - source: config/capabilities.yaml
+    path: config/capabilities.yaml
+    role: canonical-config
+  - source: schemas/agent.schema.json
+    path: schemas/agent.schema.json
+    role: config-schema
+  - source: schemas/workflow.schema.json
+    path: schemas/workflow.schema.json
+    role: config-schema
+  - source: schemas/memory.schema.json
+    path: schemas/memory.schema.json
+    role: config-schema
+  - source: schemas/policy.schema.json
+    path: schemas/policy.schema.json
+    role: config-schema
+  - source: schemas/capabilities.schema.json
+    path: schemas/capabilities.schema.json
+    role: config-schema
+  - source: schemas/turn-envelope.schema.json
+    path: schemas/turn-envelope.schema.json
+    role: turn-envelope-schema
+  - source: components/v3/runtime/HARNESS.md.tmpl
+    path: runtime/common/HARNESS.md.tmpl
+    role: runtime-entry-template
+  - source: components/v3/runtime/AGENTS.md.tmpl
+    path: runtime/codex/AGENTS.md.tmpl
+    role: runtime-entry-template
+  - source: components/v3/runtime/CLAUDE.md.tmpl
+    path: runtime/claude/CLAUDE.md.tmpl
+    role: runtime-entry-template
+  - source: components/v3/templates/MEMORY.md
+    path: templates/memory/MEMORY.md
+    role: private-memory-template
+  - source: components/v3/checks/verify-layout.py
+    path: checks/verify-layout.py
+    role: bundle-check

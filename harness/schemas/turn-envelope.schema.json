@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Harness v3 Turn Envelope",
+  "type": "object",
+  "required": ["task_mode", "gap_owner", "resolution", "risk", "write_scope", "verification_required", "status"],
+  "properties": {
+    "task_mode": {"enum": ["answer", "analysis", "execution", "verification"]},
+    "gap_owner": {"enum": ["user", "evidence", "method", "spec", "execution", "authority"]},
+    "resolution": {"enum": ["continue", "ask", "stop", "defer"]},
+    "risk": {"enum": ["low", "medium", "high"]},
+    "write_scope": {"enum": ["none", "confirmed", "blocked"]},
+    "verification_required": {"type": "boolean"},
+    "status": {"enum": ["input", "resolved", "needs-user", "executing", "verifying", "deliverable", "partial", "blocked", "failed", "stopped", "closed", "candidate"]}
+  },
+  "additionalProperties": false
+}

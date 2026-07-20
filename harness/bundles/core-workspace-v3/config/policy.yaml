@@ -1,0 +1,63 @@
+schema_version: "1"
+kind: policy-config
+permissions:
+  writes_require_confirmed_scope: true
+  dangerous_actions_require_authority: true
+  irreversible_actions_require_authority: true
+release:
+  candidate_requires_static_tests: true
+  stable_requires_dual_runtime_evidence: true
+  rollback_target: core-workspace-v2@0.1.0+draft
+budgets:
+  agents_entry:
+    warning_lines: 15
+    hard_lines: 25
+    warning_bytes: 0
+    hard_bytes: 2048
+  claude_entry:
+    warning_lines: 15
+    hard_lines: 25
+    warning_bytes: 0
+    hard_bytes: 2048
+  harness_entry:
+    warning_lines: 40
+    hard_lines: 60
+    warning_bytes: 0
+    hard_bytes: 5120
+  always_on:
+    warning_lines: 0
+    hard_lines: 0
+    warning_bytes: 8192
+    hard_bytes: 12288
+  memory_index:
+    warning_lines: 100
+    hard_lines: 200
+    warning_bytes: 12288
+    hard_bytes: 25600
+  core_yaml_each:
+    warning_lines: 0
+    hard_lines: 0
+    warning_bytes: 12288
+    hard_bytes: 16384
+  core_yaml_total:
+    warning_lines: 0
+    hard_lines: 0
+    warning_bytes: 32768
+    hard_bytes: 49152
+  method_card:
+    warning_lines: 0
+    hard_lines: 0
+    warning_bytes: 8192
+    hard_bytes: 12288
+  builtin_skill:
+    warning_lines: 300
+    hard_lines: 500
+    warning_bytes: 0
+    hard_bytes: 0
+owned_rules:
+  - id: authority-gate
+    owner: policy
+  - id: file-budget-enforcement
+    owner: policy
+  - id: release-gate
+    owner: policy

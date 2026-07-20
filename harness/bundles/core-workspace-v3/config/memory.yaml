@@ -1,0 +1,19 @@
+schema_version: "1"
+kind: memory-config
+private_root: .claude/memory
+lazy_load: true
+candidate_write:
+  enabled: true
+  confirmation_required: true
+  persist_turn_envelope: false
+file_budget:
+  index: MEMORY.md
+  warning_lines: 100
+  hard_lines: 200
+  warning_bytes: 12288
+  hard_bytes: 25600
+owned_rules:
+  - id: private-memory-boundary
+    owner: memory
+  - id: memory-candidate-confirmation
+    owner: memory
