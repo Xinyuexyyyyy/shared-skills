@@ -1,0 +1,31 @@
+schema_version: "1"
+kind: requirement-test-map
+requirements:
+  - id: config-schema
+    tests: [test_five_configs_and_schemas_validate, test_invalid_nested_policy_boolean_fails_schema]
+  - id: missing-config
+    tests: [test_missing_required_config_fails]
+  - id: manifest-check-path
+    tests: [test_missing_manifest_check_path_fails]
+  - id: check-scope
+    tests: [test_bundle_and_library_only_checks_are_distinguished]
+  - id: manifest-sha
+    tests: [test_manifest_sha_mismatch_fails]
+  - id: undeclared-file
+    tests: [test_undeclared_bundle_file_fails]
+  - id: entry-budget
+    tests: [test_entry_budget_hard_limit_fails]
+  - id: deterministic-assembly
+    tests: [test_two_assemblies_are_deterministic]
+  - id: legacy-draft
+    tests: [test_v1_and_v2_remain_legacy_drafts]
+  - id: hard-enforced-evidence
+    tests: [test_hard_enforced_capability_without_script_fails, test_hard_enforced_evidence_requires_registry_coverage]
+  - id: stable-gate
+    tests: [test_stable_is_false_without_new_session_evidence, test_manual_passed_runtime_evidence_cannot_promote]
+  - id: no-pycache
+    tests: [test_assemble_does_not_write_pycache_into_bundle]
+  - id: synthetic-fixtures
+    tests: [test_fixtures_are_synthetic]
+  - id: health-json
+    tests: [test_health_json_has_stable_fields, test_health_returns_nonzero_for_invalid_health]

@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -19,8 +20,8 @@ from typing import Any
 
 try:
     import yaml
-except ImportError as exc:
-    raise SystemExit("缺少 PyYAML。请安装 requirements.txt 中的依赖后重试。") from exc
+except ImportError:
+    yaml = None
 
 
 CONFIG_NAMES = ("agent", "workflow", "memory", "policy", "capabilities")
@@ -33,6 +34,8 @@ SUPPORTED_REGISTRATIONS = {
     "harnessctl.health",
     "harnessctl.doctor",
 }
+RUNTIME_EVIDENCE_VERIFIER_AVAILABLE = False
+CHECK_TIMEOUT_SECONDS = 30
 
 
 class HarnessError(Exception):
@@ -48,6 +51,8 @@ def sha256(path: Path) -> str:
 
 
 def read_yaml(path: Path) -> dict[str, Any]:
+    if yaml is None:
+        fail("缺少 PyYAML。请安装 harness/requirements.txt 中的依赖后重试。")
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
@@ -58,6 +63,8 @@ def read_yaml(path: Path) -> dict[str, Any]:
 
 
 def write_yaml(path: Path, data: dict[str, Any]) -> None:
+    if yaml is None:
+        fail("缺少 PyYAML，无法生成 manifest。")
     text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
     path.write_bytes(text.encode("utf-8"))
 
@@ -87,8 +94,19 @@ def type_matches(value: Any, type_name: str) -> bool:
     }.get(type_name, True)
 
 
-def validate_schema(value: Any, schema: dict[str, Any], location: str = "$") -> list[str]:
+def validate_schema(value: Any, schema: dict[str, Any], location: str = "$", root_schema: dict[str, Any] | None = None) -> list[str]:
     """Validate the JSON Schema subset used by the versioned v3 configs."""
+    root_schema = root_schema or schema
+    reference = schema.get("$ref")
+    if reference:
+        target: Any = root_schema
+        for part in reference.removeprefix("#/").split("/"):
+            if not isinstance(target, dict) or part not in target:
+                return [f"{location} 的 Schema 引用无效：{reference}"]
+            target = target[part]
+        if not isinstance(target, dict):
+            return [f"{location} 的 Schema 引用不是对象：{reference}"]
+        return validate_schema(value, target, location, root_schema)
     errors: list[str] = []
     expected = schema.get("type")
     if isinstance(expected, list):
@@ -100,6 +118,16 @@ def validate_schema(value: Any, schema: dict[str, Any], location: str = "$") -> 
         errors.append(f"{location} 必须等于 {schema['const']!r}")
     if "enum" in schema and value not in schema["enum"]:
         errors.append(f"{location} 必须属于 {schema['enum']!r}")
+    if isinstance(value, str):
+        if isinstance(schema.get("minLength"), int) and len(value) < schema["minLength"]:
+            errors.append(f"{location} 长度小于 {schema['minLength']}")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if isinstance(schema.get("minimum"), (int, float)) and value < schema["minimum"]:
+            errors.append(f"{location} 小于最小值 {schema['minimum']}")
+    if isinstance(value, list) and schema.get("uniqueItems"):
+        serialized = [json.dumps(item, ensure_ascii=False, sort_keys=True) for item in value]
+        if len(serialized) != len(set(serialized)):
+            errors.append(f"{location} 不允许重复项")
     if isinstance(value, dict):
         properties = schema.get("properties", {})
         for key in schema.get("required", []):
@@ -111,7 +139,7 @@ def validate_schema(value: Any, schema: dict[str, Any], location: str = "$") -> 
                     errors.append(f"{location} 不允许字段 {key}")
         for key, child in properties.items():
             if key in value and isinstance(child, dict):
-                errors.extend(validate_schema(value[key], child, f"{location}.{key}"))
+                errors.extend(validate_schema(value[key], child, f"{location}.{key}", root_schema))
     if isinstance(value, list):
         min_items = schema.get("minItems")
         if isinstance(min_items, int) and len(value) < min_items:
@@ -119,7 +147,7 @@ def validate_schema(value: Any, schema: dict[str, Any], location: str = "$") -> 
         item_schema = schema.get("items")
         if isinstance(item_schema, dict):
             for index, item in enumerate(value):
-                errors.extend(validate_schema(item, item_schema, f"{location}[{index}]"))
+                errors.extend(validate_schema(item, item_schema, f"{location}[{index}]", root_schema))
     return errors
 
 
@@ -179,6 +207,12 @@ def validate_assembly(root: Path, configs: dict[str, dict[str, Any]], assembly: 
     declared_configs = assembly.get("configs")
     if declared_configs != [f"config/{name}.yaml" for name in CONFIG_NAMES]:
         fail("assembly 必须按固定顺序声明五份规范配置")
+    validate_workflow_semantics(configs["workflow"])
+    memory_budget = configs["memory"].get("file_budget", {})
+    if memory_budget.get("budget_id") != "memory_index":
+        fail("memory file_budget 必须引用 policy.budgets.memory_index")
+    if "memory_index" not in configs["policy"].get("budgets", {}):
+        fail("policy 缺少 memory_index 预算")
     targets: set[str] = set()
     for entry in assembly["files"]:
         if not isinstance(entry, dict):
@@ -196,6 +230,11 @@ def validate_assembly(root: Path, configs: dict[str, dict[str, Any]], assembly: 
     for check in assembly["checks"]:
         validate_check_definition(root, check, None)
     capabilities = configs["capabilities"]
+    registry_path = root / "tests" / "test-registry.yaml"
+    if not registry_path.is_file():
+        fail(f"缺少 hard-enforced 测试注册表：{registry_path}")
+    registry = read_yaml(registry_path)
+    registered_tests = {item["id"]: item for item in registry.get("tests", [])}
     for capability in capabilities["capabilities"]:
         if capability["enforcement"] == "hard-enforced":
             evidence = capability.get("evidence")
@@ -209,9 +248,66 @@ def validate_assembly(root: Path, configs: dict[str, dict[str, Any]], assembly: 
             tests = evidence.get("tests")
             if not isinstance(tests, list) or not tests:
                 fail(f"hard-enforced 能力缺少测试：{capability['id']}")
-            for test in tests:
-                if not relative_path(test, root, f"能力 {capability['id']} 测试").is_file():
+            if evidence.get("check_id") not in {item.get("id") for item in assembly["checks"]}:
+                fail(f"hard-enforced 能力缺少有效 check_id：{capability['id']}")
+            for test_id in tests:
+                registered = registered_tests.get(test_id)
+                if not registered:
+                    fail(f"hard-enforced 能力测试未注册：{capability['id']} -> {test_id}")
+                if capability["id"] not in registered.get("capabilities", []):
+                    fail(f"测试未覆盖 hard-enforced 能力：{capability['id']} -> {test_id}")
+                test_path = relative_path(registered.get("path"), root, f"能力 {capability['id']} 测试")
+                if not test_path.is_file():
                     fail(f"hard-enforced 能力测试不存在：{capability['id']}")
+
+
+def validate_workflow_semantics(workflow: dict[str, Any]) -> None:
+    states = workflow.get("states", [])
+    state_set = set(states)
+    if len(state_set) != len(states):
+        fail("workflow states 不允许重复")
+    if workflow.get("initial_state") not in state_set:
+        fail("workflow initial_state 未声明")
+    terminal = set(workflow.get("terminal_states", []))
+    if not terminal or not terminal <= state_set:
+        fail("workflow terminal_states 必须是已声明状态的非空子集")
+    transitions = workflow.get("transitions", [])
+    outgoing: dict[str, set[str]] = {state: set() for state in states}
+    incoming: dict[str, set[str]] = {state: set() for state in states}
+    for transition in transitions:
+        source = transition.get("from")
+        target = transition.get("to")
+        if source not in state_set or target not in state_set:
+            fail(f"workflow transition 引用未知状态：{source} -> {target}")
+        if target in outgoing[source]:
+            fail(f"workflow transition 重复：{source} -> {target}")
+        outgoing[source].add(target)
+        incoming[target].add(source)
+    for state in terminal:
+        if outgoing[state]:
+            fail(f"terminal state 不得有外出 transition：{state}")
+    for state in state_set - terminal:
+        if not outgoing[state]:
+            fail(f"非 terminal state 缺少外出 transition：{state}")
+    reachable = {workflow["initial_state"]}
+    changed = True
+    while changed:
+        changed = False
+        for source, targets in outgoing.items():
+            if source in reachable:
+                before = len(reachable)
+                reachable.update(targets)
+                changed = changed or len(reachable) != before
+    if reachable != state_set:
+        fail(f"workflow 存在不可达状态：{sorted(state_set - reachable)}")
+    closeout_states = set(workflow.get("closeout", {}).get("required_for", []))
+    if not closeout_states or not closeout_states <= state_set:
+        fail("workflow closeout.required_for 必须引用已声明状态")
+    for state in closeout_states:
+        if state == workflow["initial_state"]:
+            fail("workflow closeout 不得用于 input")
+        if not any(target == "closed" for target in outgoing[state]) and state != "closed":
+            fail(f"workflow closeout 状态没有 closed 路径：{state}")
 
 
 def validate_check_definition(root: Path, check: Any, bundle_dir: Path | None) -> None:
@@ -233,6 +329,49 @@ def validate_check_definition(root: Path, check: Any, bundle_dir: Path | None) -
     command = check["command"]
     if not isinstance(command, list) or not command or not all(isinstance(item, str) for item in command):
         fail(f"check command 无效：{check['id']}")
+    if command[0] not in {"python", "python3"}:
+        fail(f"check 必须使用可移植 Python 解释器令牌：{check['id']}")
+    if Path(command[-1]).as_posix() != Path(check["path"]).as_posix():
+        fail(f"check command 未绑定声明脚本：{check['id']}")
+
+
+def execute_declared_checks(root: Path, bundle: Path) -> list[dict[str, Any]]:
+    manifest = read_yaml(bundle / "manifest.yaml")
+    results: list[dict[str, Any]] = []
+    for check in manifest.get("checks", []):
+        command = list(check["command"])
+        command[0] = sys.executable
+        environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        with tempfile.TemporaryDirectory(prefix="harness-check-") as temporary:
+            sandbox = Path(temporary)
+            if check["scope"] == "bundle":
+                base = sandbox / "bundle"
+                shutil.copytree(bundle, base)
+            else:
+                base = sandbox / "library"
+                shutil.copytree(root, base, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=base,
+                    text=True,
+                    capture_output=True,
+                    timeout=CHECK_TIMEOUT_SECONDS,
+                    env=environment,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                fail(f"check 执行失败：{check['id']}: {exc}")
+        result = {
+            "id": check["id"],
+            "scope": check["scope"],
+            "status": "passed" if completed.returncode == 0 else "failed",
+            "returncode": completed.returncode,
+        }
+        results.append(result)
+        if completed.returncode != 0:
+            fail(f"check 执行失败：{check['id']}，退出码 {completed.returncode}")
+    return results
 
 
 def manifest_payload(root: Path, configs: dict[str, dict[str, Any]], assembly: dict[str, Any], output: Path) -> dict[str, Any]:
@@ -251,12 +390,21 @@ def manifest_payload(root: Path, configs: dict[str, dict[str, Any]], assembly: d
     return {
         "schema_version": "1",
         "kind": "bundle",
+        "profile": "core-workspace-v3",
         "id": assembly["id"],
         "version": assembly["version"],
         "status": assembly["status"],
         "description": assembly["description"],
         "config_schema_version": configs["agent"]["schema_version"],
         "source_config_hash": config_hash,
+        "source_identity": {
+            "base_commit": assembly["source"]["base_commit"],
+            "ref": assembly["source"]["ref"],
+            "assembly_sha256": sha256(root / "assemblies" / "core-workspace-v3.yaml"),
+        },
+        "generator": assembly["generator"],
+        "source": assembly["source"],
+        "runtime": "neutral",
         "entrypoint": "runtime/common/HARNESS.md.tmpl",
         "configs": assembly["configs"],
         "workflow": {
@@ -308,6 +456,11 @@ def validate_bundle(root: Path, bundle: Path) -> None:
         "1", "bundle", "core-workspace-v3", "0.1.0", "draft",
     ):
         fail("v3 manifest 身份、版本或 draft 状态无效")
+    if manifest.get("profile") != "core-workspace-v3":
+        fail("v3 manifest 缺少 core-workspace-v3 profile")
+    source_identity = manifest.get("source_identity")
+    if not isinstance(source_identity, dict) or not all(source_identity.get(key) for key in ("base_commit", "ref", "assembly_sha256")):
+        fail("v3 manifest 缺少完整 source_identity")
     entrypoint = relative_path(manifest["entrypoint"], bundle, "bundle entrypoint")
     if not entrypoint.is_file():
         fail("v3 bundle entrypoint 不存在")
@@ -342,7 +495,7 @@ def line_count(path: Path) -> int:
 
 def budget_items(root: Path, policy: dict[str, Any]) -> list[dict[str, Any]]:
     bundle = root / "bundles" / "core-workspace-v3"
-    return [
+    items = [
         {"id": "agents-entry", "paths": [bundle / "runtime/codex/AGENTS.md.tmpl"], **policy["budgets"]["agents_entry"]},
         {"id": "claude-entry", "paths": [bundle / "runtime/claude/CLAUDE.md.tmpl"], **policy["budgets"]["claude_entry"]},
         {"id": "harness-entry", "paths": [bundle / "runtime/common/HARNESS.md.tmpl"], **policy["budgets"]["harness_entry"]},
@@ -350,6 +503,12 @@ def budget_items(root: Path, policy: dict[str, Any]) -> list[dict[str, Any]]:
         {"id": "memory-index", "paths": [bundle / "templates/memory/MEMORY.md"], **policy["budgets"]["memory_index"]},
         {"id": "core-yaml-total", "paths": [bundle / "config" / f"{name}.yaml" for name in CONFIG_NAMES], **policy["budgets"]["core_yaml_total"]},
     ]
+    for path in sorted(bundle.rglob("*.md")):
+        if path.name == "SKILL.md" and "skills" in path.parts:
+            items.append({"id": f"builtin-skill:{path.relative_to(bundle).as_posix()}", "paths": [path], **policy["budgets"]["builtin_skill"]})
+        if "methods" in path.parts:
+            items.append({"id": f"method-card:{path.relative_to(bundle).as_posix()}", "paths": [path], **policy["budgets"]["method_card"]})
+    return items
 
 
 def budget_report(root: Path, policy: dict[str, Any]) -> list[dict[str, Any]]:
@@ -374,6 +533,10 @@ def budget_report(root: Path, policy: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def validate_budgets(root: Path, configs: dict[str, dict[str, Any]]) -> None:
+    for budget_id, budget in configs["policy"]["budgets"].items():
+        for warning_key, hard_key in (("warning_lines", "hard_lines"), ("warning_bytes", "hard_bytes")):
+            if budget[hard_key] and budget[warning_key] and budget[hard_key] < budget[warning_key]:
+                fail(f"预算 {budget_id} 的硬上限小于 warning 上限")
     errors = [item for item in budget_report(root, configs["policy"]) if item["severity"] == "error"]
     if errors:
         fail("文件预算超过硬上限：" + ", ".join(item["id"] for item in errors))
@@ -388,7 +551,7 @@ def validate_legacy(root: Path) -> None:
             fail(f"兼容性 bundle 必须保持 legacy draft：{bundle_id}")
 
 
-def validate_project(root: Path) -> dict[str, dict[str, Any]]:
+def validate_project(root: Path) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
     configs = load_configs(root)
     validate_rule_owners(configs)
     assembly = load_assembly(root)
@@ -404,7 +567,7 @@ def validate_project(root: Path) -> dict[str, dict[str, Any]]:
             fail("core-workspace-v3 与当前规范配置或 assembly 不一致")
     validate_budgets(root, configs)
     validate_legacy(root)
-    return configs
+    return configs, execute_declared_checks(root, bundle)
 
 
 def capability_report(configs: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -414,11 +577,34 @@ def capability_report(configs: dict[str, dict[str, Any]]) -> list[dict[str, Any]
     ]
 
 
+def load_runtime_evidence(root: Path) -> tuple[dict[str, Any], list[str]]:
+    evidence_path = root / "tests" / "runtime" / "evidence.json"
+    schema_path = root / "schemas" / "runtime-evidence.schema.json"
+    fallback = {"status": "unverified", "runtimes": {"codex": {"status": "unverified"}, "claude": {"status": "unverified"}}}
+    if not evidence_path.is_file() or not schema_path.is_file():
+        return fallback, ["runtime evidence 或其 Schema 缺失"]
+    try:
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return fallback, [f"runtime evidence 无法解析：{exc}"]
+    errors = validate_schema(evidence, schema)
+    if errors:
+        return fallback, ["runtime evidence 结构无效：" + "；".join(errors)]
+    blockers: list[str] = []
+    runtime_states = [evidence["runtimes"][name]["status"] for name in ("codex", "claude")]
+    if evidence["status"] == "passed" or any(status == "passed" for status in runtime_states):
+        if not RUNTIME_EVIDENCE_VERIFIER_AVAILABLE:
+            blockers.append("runtime evidence 未经过受信评测器验证，手工 passed 不被接受")
+    return evidence, blockers
+
+
 def collect_health(root: Path) -> dict[str, Any]:
     blockers: list[str] = []
     configs: dict[str, dict[str, Any]] = {}
+    check_results: list[dict[str, Any]] = []
     try:
-        configs = validate_project(root)
+        configs, check_results = validate_project(root)
     except HarnessError as exc:
         blockers.append(str(exc))
         try:
@@ -429,12 +615,12 @@ def collect_health(root: Path) -> dict[str, Any]:
     budgets = budget_report(root, configs["policy"]) if policy else []
     blockers.extend(f"预算硬失败：{item['id']}" for item in budgets if item["severity"] == "error")
     capabilities = capability_report(configs) if configs else []
-    runtime_evidence = root / "tests" / "runtime" / "evidence.json"
-    runtime_status = {"codex": "unverified", "claude": "unverified"}
-    if runtime_evidence.is_file():
-        runtime_status.update(json.loads(runtime_evidence.read_text(encoding="utf-8")))
-    stable_eligible = bool(runtime_status.get("codex") == "passed" and runtime_status.get("claude") == "passed" and not blockers)
-    behavior_ready = (root / "tests" / "behavior" / "cases.yaml").is_file() and runtime_status.get("codex") == "passed" and runtime_status.get("claude") == "passed"
+    runtime_evidence, evidence_blockers = load_runtime_evidence(root)
+    runtime_status = {name: runtime_evidence["runtimes"][name]["status"] for name in ("codex", "claude")}
+    behavior_cases = root / "tests" / "behavior" / "cases.yaml"
+    behavior_cases_status = read_yaml(behavior_cases).get("status") if behavior_cases.is_file() and yaml is not None else "unverified"
+    stable_eligible = bool(RUNTIME_EVIDENCE_VERIFIER_AVAILABLE and runtime_status.get("codex") == "passed" and runtime_status.get("claude") == "passed" and not blockers)
+    behavior_ready = bool(RUNTIME_EVIDENCE_VERIFIER_AVAILABLE and behavior_cases_status == "passed" and runtime_status.get("codex") == "passed" and runtime_status.get("claude") == "passed")
     candidate_eligible = not blockers and behavior_ready and all(item["severity"] != "error" for item in budgets)
     check_paths: list[dict[str, Any]] = []
     manifest_path = root / "bundles/core-workspace-v3/manifest.yaml"
@@ -448,7 +634,7 @@ def collect_health(root: Path) -> dict[str, Any]:
                 check_paths.append({"id": check.get("id"), "scope": check.get("scope"), "path": path.as_posix(), "exists": path.is_file()})
         except HarnessError as exc:
             blockers.append(str(exc))
-    release_blockers = list(blockers)
+    release_blockers = list(blockers) + evidence_blockers
     if not behavior_ready:
         release_blockers.append("行为测试或 Codex/Claude 真实新会话证据仍为 pending/unverified")
     return {
@@ -458,13 +644,15 @@ def collect_health(root: Path) -> dict[str, Any]:
         "runtime_entries": [item for item in budgets if item["id"] in {"agents-entry", "claude-entry", "harness-entry"}],
         "always_on_bytes": next((item["bytes"] for item in budgets if item["id"] == "always-on"), 0),
         "budgets": budgets,
-        "checks": "passed" if not blockers else "blocked",
+        "health_status": "healthy" if not blockers else "blocked",
+        "checks": "passed" if check_results and all(item["status"] == "passed" for item in check_results) else "blocked",
+        "check_results": check_results,
         "check_paths": check_paths,
         "capabilities": capabilities,
         "undeclared_or_missing_execution": [item["id"] for item in capabilities if item["enforcement"] != "hard-enforced"],
         "static_tests": "available",
-        "behavior_tests": "pending",
-        "runtime_evidence": runtime_status,
+        "behavior_tests": behavior_cases_status,
+        "runtime_evidence": runtime_evidence,
         "release_blockers": release_blockers,
         "candidate_eligible": candidate_eligible,
         "stable_eligible": stable_eligible,
@@ -500,7 +688,7 @@ def run_assemble(root: Path, check: bool) -> int:
     return 0
 
 
-def run_health(root: Path, as_json: bool) -> int:
+def run_health(root: Path, as_json: bool, allow_unhealthy: bool) -> int:
     report = collect_health(root)
     if as_json:
         print(json.dumps(report, ensure_ascii=False, sort_keys=True))
@@ -510,7 +698,7 @@ def run_health(root: Path, as_json: bool) -> int:
         print("发布阻断项：")
         for blocker in report["release_blockers"]:
             print(f"- {blocker}")
-    return 0
+    return 0 if report["health_status"] != "blocked" or allow_unhealthy else 1
 
 
 def run_doctor(root: Path) -> int:
@@ -523,14 +711,14 @@ def run_doctor(root: Path) -> int:
     bash = shutil.which("bash")
     bundle = root / "bundles" / "core-workspace-v3"
     checks: list[dict[str, Any]] = []
-    if (bundle / "manifest.yaml").is_file():
-        for check in read_yaml(bundle / "manifest.yaml").get("checks", []):
-            base = bundle if check.get("scope") == "bundle" else root
-            path = base / str(check.get("path", ""))
-            checks.append({"id": check.get("id"), "scope": check.get("scope"), "exists": path.is_file()})
+    if (bundle / "manifest.yaml").is_file() and yaml is not None:
+        try:
+            checks = execute_declared_checks(root, bundle)
+        except HarnessError as exc:
+            issues.append(str(exc))
     print("Harness v3 doctor")
     print(f"Python：{sys.version.split()[0]}")
-    print(f"PyYAML：{yaml.__version__}")
+    print(f"PyYAML：{yaml.__version__ if yaml is not None else '不可用'}")
     print(f"Bash（PATH）：{'可用' if bash else '不可用'}")
     print(f"Codex 模板：{(bundle / 'runtime/codex/AGENTS.md.tmpl').is_file()}")
     print(f"Claude 模板：{(bundle / 'runtime/claude/CLAUDE.md.tmpl').is_file()}")
@@ -552,6 +740,7 @@ def main() -> int:
     assemble.add_argument("--check", action="store_true")
     health = subparsers.add_parser("health")
     health.add_argument("--json", action="store_true", dest="as_json")
+    health.add_argument("--allow-unhealthy", action="store_true")
     subparsers.add_parser("doctor")
     args = parser.parse_args()
     root = args.root.resolve()
@@ -561,7 +750,7 @@ def main() -> int:
         if args.command == "assemble":
             return run_assemble(root, args.check)
         if args.command == "health":
-            return run_health(root, args.as_json)
+            return run_health(root, args.as_json, args.allow_unhealthy)
         return run_doctor(root)
     except HarnessError as exc:
         print(f"harnessctl 失败：{exc}", file=sys.stderr)

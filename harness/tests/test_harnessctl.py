@@ -117,7 +117,88 @@ class HarnessCtlTests(unittest.TestCase):
     def test_stable_is_false_without_new_session_evidence(self) -> None:
         result = self.invoke("health", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertFalse(json.loads(result.stdout)["stable_eligible"])
+        report = json.loads(result.stdout)
+        self.assertFalse(report["stable_eligible"])
+        self.assertFalse(report["candidate_eligible"])
+        self.assertIn("pending", " ".join(report["release_blockers"]))
+
+    def test_manual_passed_runtime_evidence_cannot_promote(self) -> None:
+        evidence = self.root / "tests/runtime/evidence.json"
+        evidence.write_text(json.dumps({"codex": "passed", "claude": "passed"}), encoding="utf-8")
+        result = self.invoke("health", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertFalse(report["candidate_eligible"])
+        self.assertFalse(report["stable_eligible"])
+        self.assertIn("runtime evidence", " ".join(report["release_blockers"]))
+
+    def test_invalid_nested_policy_boolean_fails_schema(self) -> None:
+        path = self.root / "config/policy.yaml"
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data["permissions"]["writes_require_confirmed_scope"] = False
+        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self.assert_failure(self.invoke("assemble"), "未通过 Schema")
+
+    def test_workflow_ghost_state_and_terminal_exit_fail(self) -> None:
+        path = self.root / "config/workflow.yaml"
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data["transitions"].append({"from": "ghost-state", "to": "candidate"})
+        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self.assert_failure(self.invoke("assemble"), "未知状态")
+
+    def test_hard_enforced_evidence_requires_registry_coverage(self) -> None:
+        path = self.root / "tests/test-registry.yaml"
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data["tests"][0]["capabilities"] = []
+        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self.assert_failure(self.invoke("assemble"), "未覆盖 hard-enforced")
+
+    def test_declared_check_is_executed(self) -> None:
+        script = self.root / "checks/library-smoke.py"
+        script.write_text("raise SystemExit(7)\n" + script.read_text(encoding="utf-8"), encoding="utf-8")
+        self.assert_failure(self.invoke("validate"), "check 执行失败")
+
+    def test_declared_check_runs_in_sandbox(self) -> None:
+        script = self.root / "checks/library-smoke.py"
+        script.write_text("from pathlib import Path\nPath('check-side-effect.txt').write_text('sandbox-only')\n" + script.read_text(encoding="utf-8"), encoding="utf-8")
+        result = self.invoke("validate")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / "check-side-effect.txt").exists())
+
+    def test_health_returns_nonzero_for_invalid_health(self) -> None:
+        (self.root / "config/agent.yaml").unlink()
+        result = self.invoke("health", "--json")
+        self.assertNotEqual(result.returncode, 0)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["health_status"], "blocked")
+        allowed = self.invoke("health", "--json", "--allow-unhealthy")
+        self.assertEqual(allowed.returncode, 0)
+
+    def test_doctor_reports_missing_pyyaml_without_crashing(self) -> None:
+        environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        result = subprocess.run(
+            [PYTHON, "-S", "-B", str(self.root / "harnessctl"), "--root", str(self.root), "doctor"],
+            text=True,
+            capture_output=True,
+            env=environment,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("PyYAML", result.stdout)
+
+    def test_manifest_contains_source_identity(self) -> None:
+        _, manifest = self.manifest()
+        self.assertEqual(manifest["profile"], "core-workspace-v3")
+        self.assertIn("assembly_sha256", manifest["source_identity"])
+
+    def test_method_and_skill_budgets_are_consumed(self) -> None:
+        source = self.root / "components/v3/runtime/oversized-SKILL.md"
+        source.write_text("\n".join(f"line {index}" for index in range(501)), encoding="utf-8")
+        assembly_path = self.root / "assemblies/core-workspace-v3.yaml"
+        assembly = yaml.safe_load(assembly_path.read_text(encoding="utf-8"))
+        assembly["files"].append({"source": "components/v3/runtime/oversized-SKILL.md", "path": "skills/oversized/SKILL.md", "role": "test-skill"})
+        assembly_path.write_text(yaml.safe_dump(assembly, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self.assert_failure(self.invoke("assemble"), "文件预算超过硬上限")
 
     def test_assemble_does_not_write_pycache_into_bundle(self) -> None:
         result = self.invoke("assemble")

@@ -15,26 +15,30 @@ states:
   - candidate
 initial_state: input
 terminal_states:
-  - deliverable
-  - partial
-  - blocked
-  - failed
-  - stopped
-  - closed
   - candidate
 transitions:
   - from: input
     to: resolved
   - from: input
     to: needs-user
+  - from: input
+    to: stopped
   - from: resolved
     to: executing
   - from: resolved
     to: blocked
+  - from: resolved
+    to: stopped
+  - from: needs-user
+    to: resolved
   - from: needs-user
     to: stopped
   - from: executing
     to: verifying
+  - from: executing
+    to: partial
+  - from: executing
+    to: blocked
   - from: executing
     to: failed
   - from: verifying
@@ -43,7 +47,19 @@ transitions:
     to: partial
   - from: verifying
     to: blocked
+  - from: verifying
+    to: failed
+  - from: verifying
+    to: stopped
   - from: deliverable
+    to: closed
+  - from: partial
+    to: closed
+  - from: blocked
+    to: closed
+  - from: failed
+    to: closed
+  - from: stopped
     to: closed
   - from: closed
     to: candidate
@@ -58,6 +74,12 @@ turn_envelope:
     - verification_required
     - status
 closeout:
+  required_for:
+    - deliverable
+    - partial
+    - blocked
+    - failed
+    - stopped
   required:
     - result
     - shortest_acceptance

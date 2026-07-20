@@ -8,8 +8,9 @@ capabilities:
     evidence:
       script: harnessctl
       registration: harnessctl.validate
+      check_id: library-smoke
       tests:
-        - tests/test_harnessctl.py
+        - v3-schema-regressions
   - id: deterministic-assembly
     runtime: library
     enforcement: hard-enforced
@@ -17,8 +18,9 @@ capabilities:
     evidence:
       script: harnessctl
       registration: harnessctl.assemble
+      check_id: library-smoke
       tests:
-        - tests/test_harnessctl.py
+        - v3-assembly-regressions
   - id: manifest-and-budget-validation
     runtime: library
     enforcement: hard-enforced
@@ -26,8 +28,9 @@ capabilities:
     evidence:
       script: harnessctl
       registration: harnessctl.validate
+      check_id: library-smoke
       tests:
-        - tests/test_harnessctl.py
+        - v3-policy-regressions
   - id: codex-turn-protocol
     runtime: codex
     enforcement: contract-only

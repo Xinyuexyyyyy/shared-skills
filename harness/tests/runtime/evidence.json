@@ -1,5 +1,12 @@
 {
-  "codex": "unverified",
-  "claude": "unverified",
-  "note": "第一阶段未运行真实新会话；此文件不是运行时通过证据。"
+  "schema_version": "1",
+  "kind": "runtime-evidence",
+  "status": "unverified",
+  "verifier": "unavailable-in-phase-1",
+  "runtimes": {
+    "codex": {"status": "unverified"},
+    "claude": {"status": "unverified"}
+  },
+  "attestation": null,
+  "note": "第一阶段未运行真实新会话；手工修改此文件不能获得发布资格。"
 }

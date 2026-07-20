@@ -1,0 +1,15 @@
+schema_version: "1"
+kind: test-registry
+tests:
+  - id: v3-schema-regressions
+    path: tests/test_harnessctl.py
+    capabilities:
+      - configuration-schema-validation
+  - id: v3-assembly-regressions
+    path: tests/test_harnessctl.py
+    capabilities:
+      - deterministic-assembly
+  - id: v3-policy-regressions
+    path: tests/test_harnessctl.py
+    capabilities:
+      - manifest-and-budget-validation

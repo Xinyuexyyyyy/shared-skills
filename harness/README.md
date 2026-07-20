@@ -4,11 +4,13 @@
 
 `core-workspace-v3@0.1.0+draft` 是 v1/v2 之外的新增治理层，不删除也不替换旧 bundle。v3 将 Agent、workflow、memory、policy 和 capability 分成五个独立 YAML 配置域；Markdown 只保留运行时入口的短语义契约。
 
-从仓库根目录运行：`python harness/harnessctl validate`、`python harness/harnessctl assemble`、`python harness/harnessctl health --json`、`python harness/harnessctl doctor`。
+从仓库根目录运行：`python harness/harnessctl validate`、`python harness/harnessctl assemble`、`python harness/harnessctl health --json`、`python harness/harnessctl doctor`。Windows 也可使用根目录的 `harnessctl.cmd`。
 
 `validate` 检查 Schema、assembly、manifest 文件和 SHA-256、bundle 内外 checks、预算、legacy draft 与 hard-enforced 证据；`assemble` 确定性生成 v3 bundle；`health` 输出预算、能力分类、测试状态、release blocker、候选资格、稳定资格和回滚目标；`doctor` 只检查当前仓库可证明的运行环境与模板。
 
 当前 v3 已实现配置 Schema、确定性 assembly、manifest/检查路径校验、文件与文本预算、健康报告、静态负向测试、行为 fixture 和 draft 发布门。Codex/Claude 的 Turn Protocol 目前是 `contract-only`，真实新会话行为是 `unverified`；没有两端新会话证据时，`stable_eligible` 必须为 `false`。
+
+manifest 声明的 check 会在只读临时/仓库上下文中实际执行并记录退出码；只检查路径存在不算通过。runtime evidence 在第一阶段没有受信评测器时固定为 `unverified`，手工把 JSON 改成 `passed` 不会获得发布资格。health 在结构校验失败时返回非零退出码，`--allow-unhealthy` 仅用于明确的诊断调用。
 
 v3 回滚目标为 `core-workspace-v2@0.1.0+draft`。第一阶段不重构业务 skills、不持久化 Turn Envelope、不启用输入捕获，也不修改全局 Agent 配置。
 
@@ -68,11 +70,13 @@ harness/
 │   │   └── claude/
 │   └── input-capture/
 ├── assemblies/
-│   └── core-workspace-v2.yaml
+│   ├── core-workspace-v2.yaml
+│   └── core-workspace-v3.yaml
 ├── bundles/
 │   ├── runtime-baseline/
 │   ├── core-workspace-v1/        # 历史摘要版，只保留校验快照
-│   └── core-workspace-v2/        # 当前完整迁移草稿
+│   ├── core-workspace-v2/        # 当前完整迁移草稿
+│   └── core-workspace-v3/        # 脚本优先治理基础，仍为 draft
 ├── examples/
 │   └── livewithopencove-workspace/
 ├── scripts/
@@ -90,7 +94,7 @@ harness/
 | `scripts/` | Bundle 物化、结构检查和校验工具 |
 | `tests/` | 结构检查、负向测试和运行时烟测 |
 
-维护时只改 `components/` 和 `assemblies/`，不要手工修改 `core-workspace-v2/` 内的生成文件。Bundle 和示例副本由物化命令重新生成，校验会拒绝源组件与发布副本不一致的状态。v1 的旧 assembly 已归档，防止历史摘要版被新组件原地重建。
+维护时只改 `components/` 和 `assemblies/`，不要手工修改 `core-workspace-v2/` 或 `core-workspace-v3/` 内的生成文件。Bundle 和示例副本由物化命令重新生成，校验会拒绝源组件与发布副本不一致的状态。v1 的旧 assembly 已归档，防止历史摘要版被新组件原地重建。
 
 ## 4. 核心组件
 
@@ -351,6 +355,7 @@ workspace/
 | 10 个运行 hooks 与双运行时注册模板 | 已进入 v2，按 runtime 启用 |
 | Input Capture 完整实现 | 已进入 v2，默认关闭 |
 | `core-workspace-v2@0.1.0` | 已物化，状态为 `draft` |
+| `core-workspace-v3@0.1.0+draft` | 脚本优先治理基础已实现，仍为 `draft`；Codex/Claude 真实新会话尚未验证 |
 | LiveWithOpenCove 风格示例 | 已切换到 v2 |
 | 结构、校验值、负向、hook、memory fixture | 已通过本机验证 |
 | Win Codex、Claude v2 新会话烟测 | 待执行 |
@@ -358,9 +363,10 @@ workspace/
 | 存储镜像草稿副本 | 已生成并完成提交号、校验值复核 |
 | 正式发布版本 | 尚未发布 |
 
-在以下条件全部满足前，不得把 `core-workspace-v2` 标记为稳定：
+在以下条件全部满足前，不得把 `core-workspace-v3` 标记为 Candidate 或 Stable：
 
 - Codex 和 Claude 都在新会话中读到同一 bundle ID、版本和工作流阶段。
 - 问判断、未授权写入、验证失败和记忆确认四类行为烟测通过。
-- 存储镜像与本机发布提交、目录和校验值一致。
 - 发布版本和来源提交已记录，且发布物不含真实工作区数据。
+- health 报告中的预算、checks、静态测试和行为评测均无 release blocker。
+- 存储镜像与本机发布提交、目录和校验值一致，并完成回滚演练。

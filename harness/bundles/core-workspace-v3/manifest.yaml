@@ -1,12 +1,24 @@
 schema_version: '1'
 kind: bundle
+profile: core-workspace-v3
 id: core-workspace-v3
 version: 0.1.0
 status: draft
 description: Script-first v3 governance foundation with separated configuration and
   honest runtime capability labels
 config_schema_version: '1'
-source_config_hash: de84582320e70815d69212e7d3e532109030d32507c7456889b131e5b6b427c3
+source_config_hash: 53d94bc7e0b9904ba0ae999cb6b8e4e9e56390994a2c6803b804564dc91aa993
+source_identity:
+  base_commit: 335c2f45d9d501e59c2a4fea860f0c30282d5864
+  ref: feat/reusable-harness-library
+  assembly_sha256: a325cc0bfac17c78ecb2c7e45cc34ad34ea99008072f6c0eb809dd1bb30a156d
+generator:
+  id: harnessctl
+  version: 0.1.0
+source:
+  base_commit: 335c2f45d9d501e59c2a4fea860f0c30282d5864
+  ref: feat/reusable-harness-library
+runtime: neutral
 entrypoint: runtime/common/HARNESS.md.tmpl
 configs:
 - config/agent.yaml
@@ -40,44 +52,44 @@ checks:
   command:
   - python
   - checks/verify-layout.py
-- id: library-validation
+- id: library-smoke
   scope: library-only
-  path: harnessctl
+  path: checks/library-smoke.py
   command:
   - python
-  - harnessctl
-  - validate
+  - -B
+  - checks/library-smoke.py
 files:
 - path: config/agent.yaml
   role: canonical-config
   sha256: d5d04a358cc97687925a70f1ef175099a268715e853cd96e8f89db5af9e1c919
 - path: config/workflow.yaml
   role: canonical-config
-  sha256: ce4c129293680397a53994b2b96a51a24ee4bd67def6711b6c024574eb6c628a
+  sha256: 02139c599411f5544d1c7e16f33a6a4f1afb4909b0e8160f12313867609f2e81
 - path: config/memory.yaml
   role: canonical-config
-  sha256: c0050f7f9a93ec32fd68456ece518c04079140fb18e798e75439463961c265c7
+  sha256: 2d469491936514c6032b812233c192d89e2963fc1940ae90f85a78a67c1bc881
 - path: config/policy.yaml
   role: canonical-config
   sha256: c85c18cfc272f205ea6d10c81262f5df7a6b3499309c8c5c20c77c42830f3b6b
 - path: config/capabilities.yaml
   role: canonical-config
-  sha256: de7556d9e7ce9aeaf3fae2bc69f6482d4fde912a867e2e98a83c831a5df4a307
+  sha256: 35e0177c3546e342f0c3976154e396dd0c6d8ec44db097e47f29d1c6548b5678
 - path: schemas/agent.schema.json
   role: config-schema
-  sha256: 9137c7febc6dae68891a252748c4bb5ddef4918deef4dc7032ac1aab54a44958
+  sha256: 36c0201b1fe9aa0fcab24ad8968903c2f62f1245a11d699271397701de338e91
 - path: schemas/workflow.schema.json
   role: config-schema
-  sha256: 5b8c991c97e514d569b8d42915cdcf37129e1616c133521901a36d9dc3876691
+  sha256: 0493e56aa417ebe7ac948edbe2f91d630d294584045ecceae6aeaf68183d98e4
 - path: schemas/memory.schema.json
   role: config-schema
-  sha256: 7f258a6c5172708f7c241b15470af28d02fdeca2a66a70c1198557b37568eaf1
+  sha256: 5ed09c9da280129d3254462b1c5fe3cfa6940753df1f2cd6d569816b3c64ca3e
 - path: schemas/policy.schema.json
   role: config-schema
-  sha256: 33f6dd5d27eaa4b9228ab7a530f5ad5f34525eb0b537da61be399757c6ff0c61
+  sha256: ec71348700b735614f82504f38c14972096f372c3720eca07b6b0fa623b85960
 - path: schemas/capabilities.schema.json
   role: config-schema
-  sha256: 53e9cdc3c6be6c7dd2ba1cbc3ee0ee56e160f463912f1538002c12e489439ca0
+  sha256: b9f099705dd31ba32a4fb95e7816342c1db94a184f2c588cb3387635b383ec14
 - path: schemas/turn-envelope.schema.json
   role: turn-envelope-schema
   sha256: b7dcbeaf5cbf59201022dc5059d4d64865df7909d73a1d158a3880a347921b3b

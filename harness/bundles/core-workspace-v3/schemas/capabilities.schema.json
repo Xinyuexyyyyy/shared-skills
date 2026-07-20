@@ -4,8 +4,30 @@
   "properties": {
     "schema_version": {"const": "1"},
     "kind": {"const": "capabilities-config"},
-    "capabilities": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "runtime", "enforcement", "evidence_level"], "properties": {"id": {"type": "string"}, "runtime": {"enum": ["library", "codex", "claude"]}, "enforcement": {"enum": ["hard-enforced", "contract-only", "eval-only", "unverified"]}, "evidence_level": {"type": "string"}}}},
-    "owned_rules": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "capabilities"}}, "additionalProperties": false}}
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": ["id", "runtime", "enforcement", "evidence_level"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "runtime": {"enum": ["library", "codex", "claude"]},
+          "enforcement": {"enum": ["hard-enforced", "contract-only", "eval-only", "unverified"]},
+          "evidence_level": {"type": "string", "minLength": 1},
+          "evidence": {
+            "type": "object",
+            "required": ["script", "registration", "check_id", "tests"],
+            "properties": {"script": {"type": "string"}, "registration": {"type": "string"}, "check_id": {"type": "string"}, "tests": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}},
+            "additionalProperties": false
+          },
+          "note": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "owned_rules": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "capabilities"}}, "additionalProperties": false}}
   },
   "additionalProperties": false
 }

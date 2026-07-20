@@ -20,13 +20,19 @@ checks:
     command:
       - python
       - checks/verify-layout.py
-  - id: library-validation
+  - id: library-smoke
     scope: library-only
-    path: harnessctl
+    path: checks/library-smoke.py
     command:
       - python
-      - harnessctl
-      - validate
+      - -B
+      - checks/library-smoke.py
+generator:
+  id: harnessctl
+  version: 0.1.0
+source:
+  base_commit: 335c2f45d9d501e59c2a4fea860f0c30282d5864
+  ref: feat/reusable-harness-library
 files:
   - source: config/agent.yaml
     path: config/agent.yaml

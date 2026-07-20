@@ -5,10 +5,20 @@
     "schema_version": {"const": "1"},
     "kind": {"const": "memory-config"},
     "private_root": {"const": ".claude/memory"},
-    "lazy_load": {"type": "boolean"},
-    "candidate_write": {"type": "object", "required": ["enabled", "confirmation_required", "persist_turn_envelope"]},
-    "file_budget": {"type": "object", "required": ["index", "warning_lines", "hard_lines", "warning_bytes", "hard_bytes"]},
-    "owned_rules": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "memory"}}, "additionalProperties": false}}
+    "lazy_load": {"const": true},
+    "candidate_write": {
+      "type": "object",
+      "required": ["enabled", "confirmation_required", "persist_turn_envelope"],
+      "properties": {"enabled": {"const": true}, "confirmation_required": {"const": true}, "persist_turn_envelope": {"const": false}},
+      "additionalProperties": false
+    },
+    "file_budget": {
+      "type": "object",
+      "required": ["budget_id", "index"],
+      "properties": {"budget_id": {"const": "memory_index"}, "index": {"const": "MEMORY.md"}},
+      "additionalProperties": false
+    },
+    "owned_rules": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "memory"}}, "additionalProperties": false}}
   },
   "additionalProperties": false
 }
