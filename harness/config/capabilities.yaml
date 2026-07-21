@@ -28,7 +28,7 @@ capabilities:
     evidence:
       script: harnessctl
       registration: harnessctl.validate
-      check_id: library-smoke
+      check_id: bundle-layout
       tests:
         - v3-policy-regressions
   - id: codex-turn-protocol

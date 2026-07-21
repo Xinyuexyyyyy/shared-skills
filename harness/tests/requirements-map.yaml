@@ -10,7 +10,7 @@ requirements:
   - id: check-scope
     tests: [test_bundle_and_library_only_checks_are_distinguished]
   - id: manifest-sha
-    tests: [test_manifest_sha_mismatch_fails]
+    tests: [test_manifest_sha_mismatch_fails, test_manifest_validation_direct]
   - id: undeclared-file
     tests: [test_undeclared_bundle_file_fails]
   - id: entry-budget
@@ -20,12 +20,41 @@ requirements:
   - id: legacy-draft
     tests: [test_v1_and_v2_remain_legacy_drafts]
   - id: hard-enforced-evidence
-    tests: [test_hard_enforced_capability_without_script_fails, test_hard_enforced_evidence_requires_registry_coverage]
+    tests:
+      - test_hard_enforced_capability_without_script_fails
+      - test_hard_enforced_script_must_match_registration
+      - test_hard_enforced_check_must_cover_capability
+      - test_hard_enforced_evidence_requires_registry_coverage
+      - test_registered_tests_are_executed
+      - test_registered_selector_cannot_be_reassigned
   - id: stable-gate
-    tests: [test_stable_is_false_without_new_session_evidence, test_manual_passed_runtime_evidence_cannot_promote]
+    tests:
+      - test_stable_is_false_without_new_session_evidence
+      - test_manual_passed_runtime_evidence_cannot_promote
+      - test_stable_requires_candidate_gate
   - id: no-pycache
     tests: [test_assemble_does_not_write_pycache_into_bundle]
   - id: synthetic-fixtures
     tests: [test_fixtures_are_synthetic]
   - id: health-json
     tests: [test_health_json_has_stable_fields, test_health_returns_nonzero_for_invalid_health]
+  - id: workflow-semantics
+    tests:
+      - test_workflow_ghost_state_and_terminal_exit_fail
+      - test_turn_envelope_schema_is_single_field_owner
+      - test_closeout_requires_exact_outcome_states
+  - id: check-execution
+    tests:
+      - test_declared_check_is_executed
+      - test_check_command_cannot_bypass_declared_script
+      - test_declared_check_runs_in_sandbox
+  - id: privacy-boundary
+    tests: [test_sensitive_bundle_content_is_rejected]
+  - id: source-identity
+    tests: [test_manifest_contains_source_identity, test_source_identity_values_are_enforced]
+  - id: requirements-map
+    tests: [test_requirements_map_is_enforced]
+  - id: doctor
+    tests: [test_doctor_reports_missing_pyyaml_without_crashing, test_doctor_reports_hook_and_interpreter_boundaries]
+  - id: method-skill-budgets
+    tests: [test_method_and_skill_budgets_are_consumed]

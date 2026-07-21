@@ -8,9 +8,11 @@ workspace memory, session history, credentials, device state, or runtime logs.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,14 +30,68 @@ CONFIG_NAMES = ("agent", "workflow", "memory", "policy", "capabilities")
 LEGACY_BUNDLES = ("core-workspace-v1", "core-workspace-v2")
 ENFORCEMENT_LEVELS = {"hard-enforced", "contract-only", "eval-only", "unverified"}
 CHECK_SCOPES = {"bundle", "library-only"}
-SUPPORTED_REGISTRATIONS = {
-    "harnessctl.validate",
-    "harnessctl.assemble",
-    "harnessctl.health",
-    "harnessctl.doctor",
+EXPECTED_SOURCE_BASE = "335c2f45d9d501e59c2a4fea860f0c30282d5864"
+EXPECTED_SOURCE_REF = "feat/reusable-harness-library"
+EXPECTED_GENERATOR = {"id": "harnessctl", "version": "0.1.0"}
+TURN_ENVELOPE_FIELDS = {
+    "task_mode", "gap_owner", "resolution", "risk", "write_scope",
+    "verification_required", "status",
+}
+GAP_OWNERS = {"user", "evidence", "method", "spec", "execution", "authority"}
+CLOSEOUT_STATES = {"deliverable", "partial", "blocked", "failed", "stopped"}
+CLOSEOUT_FIELDS = {"result", "shortest_acceptance", "unfinished", "adjacent_next_step"}
+REQUIRED_REQUIREMENTS = {
+    "config-schema", "missing-config", "manifest-check-path", "check-scope",
+    "manifest-sha", "undeclared-file", "entry-budget", "deterministic-assembly",
+    "legacy-draft", "hard-enforced-evidence", "stable-gate", "no-pycache",
+    "synthetic-fixtures", "health-json", "workflow-semantics", "check-execution",
+    "privacy-boundary", "source-identity", "requirements-map", "doctor",
+}
+REGISTRATION_CONTRACTS = {
+    "harnessctl.validate": {
+        "script": "harnessctl",
+        "capabilities": {"configuration-schema-validation", "manifest-and-budget-validation"},
+    },
+    "harnessctl.assemble": {
+        "script": "harnessctl",
+        "capabilities": {"deterministic-assembly"},
+    },
+}
+CHECK_CONTRACTS = {
+    "bundle-layout": {
+        "scope": "bundle",
+        "path": "checks/verify-layout.py",
+        "capabilities": {"manifest-and-budget-validation"},
+    },
+    "library-smoke": {
+        "scope": "library-only",
+        "path": "checks/library-smoke.py",
+        "capabilities": {"configuration-schema-validation", "deterministic-assembly"},
+    },
+}
+TEST_REGISTRY_CONTRACTS = {
+    "v3-schema-regressions": {
+        "path": "tests/test_harnessctl.py",
+        "selectors": ["HarnessCtlTests.test_invalid_nested_policy_boolean_fails_schema"],
+        "capabilities": {"configuration-schema-validation"},
+    },
+    "v3-assembly-regressions": {
+        "path": "tests/test_harnessctl.py",
+        "selectors": ["HarnessCtlTests.test_two_assemblies_are_deterministic"],
+        "capabilities": {"deterministic-assembly"},
+    },
+    "v3-policy-regressions": {
+        "path": "tests/test_harnessctl.py",
+        "selectors": [
+            "HarnessCtlTests.test_entry_budget_hard_limit_fails",
+            "HarnessCtlTests.test_manifest_validation_direct",
+        ],
+        "capabilities": {"manifest-and-budget-validation"},
+    },
 }
 RUNTIME_EVIDENCE_VERIFIER_AVAILABLE = False
 CHECK_TIMEOUT_SECONDS = 30
+REGISTERED_TEST_TIMEOUT_SECONDS = 60
 
 
 class HarnessError(Exception):
@@ -200,14 +256,141 @@ def load_assembly(root: Path) -> dict[str, Any]:
         fail("v3 assembly 标识或版本无效")
     if assembly["status"] != "draft":
         fail("v3 必须保持 draft")
+    source = assembly.get("source")
+    if not isinstance(source, dict):
+        fail("v3 assembly 缺少 source 身份")
+    base_commit = source.get("base_commit")
+    if not isinstance(base_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", base_commit):
+        fail("v3 assembly source.base_commit 必须是 40 位小写 Git SHA")
+    if base_commit != EXPECTED_SOURCE_BASE or source.get("ref") != EXPECTED_SOURCE_REF:
+        fail("v3 assembly source 身份与固定基准不一致")
+    if assembly.get("generator") != EXPECTED_GENERATOR:
+        fail("v3 assembly generator 身份无效")
     return assembly
+
+
+def discover_test_methods(path: Path) -> dict[str, set[str]]:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError) as exc:
+        fail(f"无法解析测试文件：{path}: {exc}")
+    discovered: dict[str, set[str]] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            methods = {
+                item.name for item in node.body
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name.startswith("test_")
+            }
+            if methods:
+                discovered[node.name] = methods
+    return discovered
+
+
+def load_test_registry(root: Path, capability_ids: set[str]) -> list[dict[str, Any]]:
+    registry_path = root / "tests" / "test-registry.yaml"
+    if not registry_path.is_file():
+        fail(f"缺少 hard-enforced 测试注册表：{registry_path}")
+    registry = read_yaml(registry_path)
+    if registry.get("schema_version") != "1" or registry.get("kind") != "test-registry":
+        fail("hard-enforced 测试注册表身份无效")
+    entries = registry.get("tests")
+    if not isinstance(entries, list) or not entries:
+        fail("hard-enforced 测试注册表必须包含测试")
+    seen: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {"id", "path", "selectors", "capabilities"}:
+            fail("测试注册项必须且只能包含 id、path、selectors、capabilities")
+        test_id = entry["id"]
+        if not isinstance(test_id, str) or not test_id or test_id in seen:
+            fail(f"测试注册 ID 无效或重复：{test_id!r}")
+        seen.add(test_id)
+        contract = TEST_REGISTRY_CONTRACTS.get(test_id)
+        if contract is None:
+            fail(f"测试注册 ID 未在内置证据契约中声明：{test_id}")
+        path_value = entry["path"]
+        if not isinstance(path_value, str) or Path(path_value).as_posix() != contract["path"]:
+            fail(f"测试注册路径与内置证据契约不一致：{test_id}")
+        path = relative_path(path_value, root, f"测试注册 {test_id} path")
+        try:
+            path.relative_to((root / "tests").resolve())
+        except ValueError:
+            fail(f"测试注册必须位于 tests/：{test_id}")
+        if path.suffix != ".py" or not path.is_file():
+            fail(f"测试注册必须指向现存 Python 文件：{test_id}")
+        discovered = discover_test_methods(path)
+        selectors = entry["selectors"]
+        if not isinstance(selectors, list) or not selectors or len(selectors) != len(set(selectors)):
+            fail(f"测试注册 selectors 无效或重复：{test_id}")
+        if selectors != contract["selectors"]:
+            fail(f"测试注册 selectors 与内置证据契约不一致：{test_id}")
+        for selector in selectors:
+            if not isinstance(selector, str) or selector.count(".") != 1:
+                fail(f"测试选择器格式无效：{test_id} -> {selector!r}")
+            class_name, method_name = selector.split(".", 1)
+            if method_name not in discovered.get(class_name, set()):
+                fail(f"测试选择器不存在：{test_id} -> {selector}")
+        covered = entry["capabilities"]
+        if not isinstance(covered, list) or not covered or len(covered) != len(set(covered)):
+            fail(f"测试注册 capabilities 无效或重复：{test_id}")
+        if set(covered) != contract["capabilities"]:
+            fail(f"测试注册 capabilities 与内置证据契约不一致：{test_id}")
+        unknown = set(covered) - capability_ids
+        if unknown:
+            fail(f"测试注册引用未知能力：{test_id} -> {sorted(unknown)}")
+    if seen != set(TEST_REGISTRY_CONTRACTS):
+        fail(f"测试注册集合与内置证据契约不一致：缺少={sorted(set(TEST_REGISTRY_CONTRACTS) - seen)}")
+    return entries
+
+
+def validate_requirements_map(root: Path) -> dict[str, Any]:
+    path = root / "tests" / "requirements-map.yaml"
+    if not path.is_file():
+        fail(f"缺少 requirements-map：{path}")
+    data = read_yaml(path)
+    if data.get("schema_version") != "1" or data.get("kind") != "requirement-test-map":
+        fail("requirements-map 身份无效")
+    requirements = data.get("requirements")
+    if not isinstance(requirements, list) or not requirements:
+        fail("requirements-map 必须包含 requirements")
+    test_file = root / "tests" / "test_harnessctl.py"
+    discovered_by_class = discover_test_methods(test_file)
+    discovered = set().union(*discovered_by_class.values()) if discovered_by_class else set()
+    seen_requirements: set[str] = set()
+    mapped: set[str] = set()
+    for item in requirements:
+        if not isinstance(item, dict) or set(item) != {"id", "tests"}:
+            fail("requirements-map 条目必须且只能包含 id 和 tests")
+        requirement_id = item["id"]
+        tests = item["tests"]
+        if not isinstance(requirement_id, str) or not requirement_id or requirement_id in seen_requirements:
+            fail(f"requirement ID 无效或重复：{requirement_id!r}")
+        seen_requirements.add(requirement_id)
+        if not isinstance(tests, list) or not tests or len(tests) != len(set(tests)):
+            fail(f"requirement 测试映射无效或重复：{requirement_id}")
+        unknown = set(tests) - discovered
+        if unknown:
+            fail(f"requirements-map 引用未知测试：{requirement_id} -> {sorted(unknown)}")
+        mapped.update(tests)
+    missing_requirements = REQUIRED_REQUIREMENTS - seen_requirements
+    if missing_requirements:
+        fail(f"requirements-map 缺少关键 requirement：{sorted(missing_requirements)}")
+    unmapped = discovered - mapped
+    if unmapped:
+        fail(f"requirements-map 存在未映射测试：{sorted(unmapped)}")
+    return {
+        "status": "passed",
+        "requirements": len(seen_requirements),
+        "mapped_tests": len(mapped),
+        "discovered_tests": len(discovered),
+    }
 
 
 def validate_assembly(root: Path, configs: dict[str, dict[str, Any]], assembly: dict[str, Any]) -> None:
     declared_configs = assembly.get("configs")
     if declared_configs != [f"config/{name}.yaml" for name in CONFIG_NAMES]:
         fail("assembly 必须按固定顺序声明五份规范配置")
-    validate_workflow_semantics(configs["workflow"])
+    validate_workflow_semantics(root, configs["workflow"])
+    validate_requirements_map(root)
     memory_budget = configs["memory"].get("file_budget", {})
     if memory_budget.get("budget_id") != "memory_index":
         fail("memory file_budget 必须引用 policy.budgets.memory_index")
@@ -227,41 +410,54 @@ def validate_assembly(root: Path, configs: dict[str, dict[str, Any]], assembly: 
         targets.add(target)
         if not source.is_file():
             fail(f"assembly 源文件不存在：{source}")
-    for check in assembly["checks"]:
-        validate_check_definition(root, check, None)
     capabilities = configs["capabilities"]
-    registry_path = root / "tests" / "test-registry.yaml"
-    if not registry_path.is_file():
-        fail(f"缺少 hard-enforced 测试注册表：{registry_path}")
-    registry = read_yaml(registry_path)
-    registered_tests = {item["id"]: item for item in registry.get("tests", [])}
+    capability_ids = {item["id"] for item in capabilities["capabilities"]}
+    check_ids: set[str] = set()
+    checks_by_id: dict[str, dict[str, Any]] = {}
+    for check in assembly["checks"]:
+        validate_check_definition(root, check, None, capability_ids)
+        check_id = check["id"]
+        if check_id in check_ids:
+            fail(f"assembly 含重复 check ID：{check_id}")
+        check_ids.add(check_id)
+        checks_by_id[check_id] = check
+    if check_ids != set(CHECK_CONTRACTS):
+        fail(f"assembly check 集合与内置执行契约不一致：{sorted(check_ids)}")
+    registry_entries = load_test_registry(root, capability_ids)
+    registered_tests = {item["id"]: item for item in registry_entries}
     for capability in capabilities["capabilities"]:
         if capability["enforcement"] == "hard-enforced":
             evidence = capability.get("evidence")
             if not isinstance(evidence, dict):
                 fail(f"hard-enforced 能力缺少证据：{capability['id']}")
+            if capability.get("evidence_level") != "static-test":
+                fail(f"hard-enforced 能力必须声明 static-test 证据：{capability['id']}")
+            registration = evidence.get("registration")
+            contract = REGISTRATION_CONTRACTS.get(registration)
+            if not contract or capability["id"] not in contract["capabilities"]:
+                fail(f"hard-enforced 能力注册点未绑定该能力：{capability['id']}")
+            if evidence.get("script") != contract["script"]:
+                fail(f"hard-enforced 能力脚本未绑定注册组件：{capability['id']}")
             script = relative_path(evidence.get("script"), root, f"能力 {capability['id']} 脚本")
             if not script.is_file():
                 fail(f"hard-enforced 能力脚本不存在：{capability['id']}")
-            if evidence.get("registration") not in SUPPORTED_REGISTRATIONS:
-                fail(f"hard-enforced 能力注册点无效：{capability['id']}")
             tests = evidence.get("tests")
             if not isinstance(tests, list) or not tests:
                 fail(f"hard-enforced 能力缺少测试：{capability['id']}")
-            if evidence.get("check_id") not in {item.get("id") for item in assembly["checks"]}:
+            check = checks_by_id.get(evidence.get("check_id"))
+            if not check:
                 fail(f"hard-enforced 能力缺少有效 check_id：{capability['id']}")
+            if capability["id"] not in check["capabilities"]:
+                fail(f"check 未声明覆盖 hard-enforced 能力：{capability['id']} -> {check['id']}")
             for test_id in tests:
                 registered = registered_tests.get(test_id)
                 if not registered:
                     fail(f"hard-enforced 能力测试未注册：{capability['id']} -> {test_id}")
                 if capability["id"] not in registered.get("capabilities", []):
                     fail(f"测试未覆盖 hard-enforced 能力：{capability['id']} -> {test_id}")
-                test_path = relative_path(registered.get("path"), root, f"能力 {capability['id']} 测试")
-                if not test_path.is_file():
-                    fail(f"hard-enforced 能力测试不存在：{capability['id']}")
 
 
-def validate_workflow_semantics(workflow: dict[str, Any]) -> None:
+def validate_workflow_semantics(root: Path, workflow: dict[str, Any]) -> None:
     states = workflow.get("states", [])
     state_set = set(states)
     if len(state_set) != len(states):
@@ -300,39 +496,81 @@ def validate_workflow_semantics(workflow: dict[str, Any]) -> None:
                 changed = changed or len(reachable) != before
     if reachable != state_set:
         fail(f"workflow 存在不可达状态：{sorted(state_set - reachable)}")
-    closeout_states = set(workflow.get("closeout", {}).get("required_for", []))
-    if not closeout_states or not closeout_states <= state_set:
-        fail("workflow closeout.required_for 必须引用已声明状态")
+    turn_envelope = workflow.get("turn_envelope", {})
+    schema_path = relative_path(turn_envelope.get("schema"), root, "Turn Envelope Schema")
+    if not schema_path.is_file():
+        fail("Turn Envelope Schema 不存在")
+    try:
+        envelope_schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"无法读取 Turn Envelope Schema：{exc}")
+    schema_required = set(envelope_schema.get("required", []))
+    schema_properties = set(envelope_schema.get("properties", {}))
+    if schema_required != TURN_ENVELOPE_FIELDS or schema_properties != TURN_ENVELOPE_FIELDS:
+        fail("Turn Envelope Schema 字段必须与 v3 契约精确一致")
+    if envelope_schema.get("additionalProperties") is not False:
+        fail("Turn Envelope Schema 必须拒绝额外字段")
+    gap_owner_schema = envelope_schema["properties"].get("gap_owner", {})
+    if set(gap_owner_schema.get("enum", [])) != GAP_OWNERS:
+        fail("Turn Envelope gap_owner 必须包含六类规范所有者")
+    status_schema = envelope_schema["properties"].get("status", {})
+    if set(status_schema.get("enum", [])) != state_set:
+        fail("Turn Envelope status 必须与 workflow states 精确一致")
+    closeout = workflow.get("closeout", {})
+    closeout_states = set(closeout.get("required_for", []))
+    if closeout_states != CLOSEOUT_STATES:
+        fail("workflow closeout.required_for 必须精确覆盖五个结果状态")
+    if set(closeout.get("required", [])) != CLOSEOUT_FIELDS:
+        fail("workflow closeout.required 必须精确覆盖四个交付字段")
     for state in closeout_states:
-        if state == workflow["initial_state"]:
-            fail("workflow closeout 不得用于 input")
-        if not any(target == "closed" for target in outgoing[state]) and state != "closed":
+        if not any(target == "closed" for target in outgoing[state]):
             fail(f"workflow closeout 状态没有 closed 路径：{state}")
 
 
-def validate_check_definition(root: Path, check: Any, bundle_dir: Path | None) -> None:
+def validate_check_definition(
+    root: Path,
+    check: Any,
+    bundle_dir: Path | None,
+    capability_ids: set[str],
+) -> None:
     if not isinstance(check, dict):
         fail("manifest checks 必须是映射列表")
-    for key in ("id", "scope", "path", "command"):
+    for key in ("id", "scope", "path", "command", "capabilities"):
         if key not in check:
             fail(f"check 缺少字段 {key}")
+    if not isinstance(check["id"], str) or not check["id"]:
+        fail("check id 必须是非空字符串")
     if check["scope"] not in CHECK_SCOPES:
         fail(f"check scope 无效：{check['scope']}")
-    base = bundle_dir if check["scope"] == "bundle" else root
-    if base is None:
-        if check["scope"] == "bundle":
-            return
-        base = root
-    path = relative_path(check["path"], base, f"check {check['id']} path")
-    if not path.is_file():
-        fail(f"check 路径不存在：{check['id']} -> {path}")
+    contract = CHECK_CONTRACTS.get(check["id"])
+    if contract is None:
+        fail(f"check ID 未在内置执行契约中声明：{check['id']}")
+    if not isinstance(check["path"], str) or check["scope"] != contract["scope"] or Path(check["path"]).as_posix() != contract["path"]:
+        fail(f"check scope/path 与内置执行契约不一致：{check['id']}")
+    covered = check["capabilities"]
+    if not isinstance(covered, list) or len(covered) != len(set(covered)):
+        fail(f"check capabilities 无效或重复：{check['id']}")
+    if set(covered) != contract["capabilities"]:
+        fail(f"check capabilities 与内置执行契约不一致：{check['id']}")
+    unknown = set(covered) - capability_ids
+    if unknown:
+        fail(f"check 引用未知能力：{check['id']} -> {sorted(unknown)}")
     command = check["command"]
     if not isinstance(command, list) or not command or not all(isinstance(item, str) for item in command):
         fail(f"check command 无效：{check['id']}")
     if command[0] not in {"python", "python3"}:
         fail(f"check 必须使用可移植 Python 解释器令牌：{check['id']}")
-    if Path(command[-1]).as_posix() != Path(check["path"]).as_posix():
+    script_index = 2 if len(command) > 1 and command[1] == "-B" else 1
+    if len(command) != script_index + 1:
+        fail(f"check command 只允许解释器、可选 -B 和声明脚本：{check['id']}")
+    if Path(command[script_index]).as_posix() != Path(check["path"]).as_posix():
         fail(f"check command 未绑定声明脚本：{check['id']}")
+    base = bundle_dir if check["scope"] == "bundle" else root
+    if base is None:
+        return
+    path = relative_path(check["path"], base, f"check {check['id']} path")
+    if not path.is_file():
+        fail(f"check 路径不存在：{check['id']} -> {path}")
 
 
 def execute_declared_checks(root: Path, bundle: Path) -> list[dict[str, Any]]:
@@ -342,6 +580,7 @@ def execute_declared_checks(root: Path, bundle: Path) -> list[dict[str, Any]]:
         command = list(check["command"])
         command[0] = sys.executable
         environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        repository_before = tree_fingerprint(root)
         with tempfile.TemporaryDirectory(prefix="harness-check-") as temporary:
             sandbox = Path(temporary)
             if check["scope"] == "bundle":
@@ -350,6 +589,7 @@ def execute_declared_checks(root: Path, bundle: Path) -> list[dict[str, Any]]:
             else:
                 base = sandbox / "library"
                 shutil.copytree(root, base, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            sandbox_before = tree_fingerprint(sandbox)
             try:
                 completed = subprocess.run(
                     command,
@@ -362,15 +602,65 @@ def execute_declared_checks(root: Path, bundle: Path) -> list[dict[str, Any]]:
                 )
             except (OSError, subprocess.TimeoutExpired) as exc:
                 fail(f"check 执行失败：{check['id']}: {exc}")
+            sandbox_after = tree_fingerprint(sandbox)
+        if tree_fingerprint(root) != repository_before:
+            fail(f"check 意外修改真实 Harness：{check['id']}")
+        if sandbox_after != sandbox_before:
+            fail(f"check 不得修改 sandbox：{check['id']}")
         result = {
             "id": check["id"],
             "scope": check["scope"],
             "status": "passed" if completed.returncode == 0 else "failed",
             "returncode": completed.returncode,
+            "filesystem_mutation": "none",
         }
         results.append(result)
         if completed.returncode != 0:
             fail(f"check 执行失败：{check['id']}，退出码 {completed.returncode}")
+    return results
+
+
+def execute_registered_tests(root: Path, configs: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    capability_ids = {item["id"] for item in configs["capabilities"]["capabilities"]}
+    entries = load_test_registry(root, capability_ids)
+    results: list[dict[str, Any]] = []
+    for entry in entries:
+        environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        repository_before = tree_fingerprint(root)
+        with tempfile.TemporaryDirectory(prefix="harness-evidence-") as temporary:
+            sandbox = Path(temporary)
+            base = sandbox / "library"
+            shutil.copytree(root, base, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            sandbox_before = tree_fingerprint(sandbox)
+            command = [sys.executable, "-B", entry["path"], *entry["selectors"]]
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=base,
+                    text=True,
+                    capture_output=True,
+                    timeout=REGISTERED_TEST_TIMEOUT_SECONDS,
+                    env=environment,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                fail(f"注册测试执行失败：{entry['id']}: {exc}")
+            sandbox_after = tree_fingerprint(sandbox)
+        if tree_fingerprint(root) != repository_before:
+            fail(f"注册测试意外修改真实 Harness：{entry['id']}")
+        if sandbox_after != sandbox_before:
+            fail(f"注册测试不得修改 sandbox：{entry['id']}")
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout).strip()[-500:]
+            fail(f"注册测试失败：{entry['id']}，退出码 {completed.returncode}：{detail}")
+        results.append({
+            "id": entry["id"],
+            "status": "passed",
+            "returncode": completed.returncode,
+            "selectors": entry["selectors"],
+            "capabilities": entry["capabilities"],
+            "filesystem_mutation": "none",
+        })
     return results
 
 
@@ -413,6 +703,12 @@ def manifest_payload(root: Path, configs: dict[str, dict[str, Any]], assembly: d
         },
         "runtime_adapters": assembly["runtime_adapters"],
         "capabilities": "config/capabilities.yaml",
+        "check_execution": {
+            "runner": "harnessctl",
+            "interpreter_resolution": "sys.executable",
+            "filesystem_mutation": "deny",
+            "direct_manifest_execution": "unsupported",
+        },
         "checks": assembly["checks"],
         "files": files,
         "excludes": [
@@ -433,7 +729,9 @@ def render_bundle(root: Path, output: Path) -> None:
         target = relative_path(entry["path"], output, "assembly target")
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
-    write_yaml(output / "manifest.yaml", manifest_payload(root, configs, assembly, output))
+    manifest_path = output / "manifest.yaml"
+    write_yaml(manifest_path, manifest_payload(root, configs, assembly, output))
+    scan_published_content([manifest_path, *(path for path in output.rglob("*") if path.is_file() and path != manifest_path)])
 
 
 def tree_fingerprint(root: Path) -> str:
@@ -444,6 +742,38 @@ def tree_fingerprint(root: Path) -> str:
         digest.update(path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def scan_published_content(paths: list[Path]) -> None:
+    forbidden_names = ("open" + "claw", "hu" + "b", "user" + "ysys")
+    absolute_path = re.compile(
+        r"(?:^|[\s`\"'(=:\[：])/(?!/)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*"
+        r"|(?:^|[\s`\"'(=:\[：])[A-Za-z]:[\\/]"
+        r"|(?:^|[\s`\"'(=:\[：])\\\\[^\\\s]+\\",
+        re.MULTILINE,
+    )
+    file_url = re.compile(r"\bfile://", re.IGNORECASE)
+    forbidden_runtime = re.compile(r"\b(?:" + "|".join(forbidden_names) + r")\b", re.IGNORECASE)
+    credential_words = ("pass" + "word", "to" + "ken", "se" + "cret", "api" + "[_-]?key")
+    credential_assignment = re.compile(
+        r"\b(?:" + "|".join(credential_words) + r")\b\s*[:=]\s*[\"']?"
+        r"(?!<redacted>|example|null|none)[^\s\"']+",
+        re.IGNORECASE,
+    )
+    https_url = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+    for path in paths:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            fail(f"发布文件必须是可读取的 UTF-8 文本：{path}: {exc}")
+        portability_text = https_url.sub("", text)
+        portability_text = re.sub(r"\A#![^\n]*\n", "", portability_text)
+        if file_url.search(text) or absolute_path.search(portability_text):
+            fail(f"发布内容包含不可移植绝对路径：{path}")
+        if forbidden_runtime.search(text):
+            fail(f"发布内容包含禁止的运行时或设备引用：{path}")
+        if credential_assignment.search(text):
+            fail(f"发布内容疑似包含凭证赋值：{path}")
 
 
 def validate_bundle(root: Path, bundle: Path) -> None:
@@ -458,9 +788,23 @@ def validate_bundle(root: Path, bundle: Path) -> None:
         fail("v3 manifest 身份、版本或 draft 状态无效")
     if manifest.get("profile") != "core-workspace-v3":
         fail("v3 manifest 缺少 core-workspace-v3 profile")
-    source_identity = manifest.get("source_identity")
-    if not isinstance(source_identity, dict) or not all(source_identity.get(key) for key in ("base_commit", "ref", "assembly_sha256")):
-        fail("v3 manifest 缺少完整 source_identity")
+    expected_source = {"base_commit": EXPECTED_SOURCE_BASE, "ref": EXPECTED_SOURCE_REF}
+    expected_identity = {
+        **expected_source,
+        "assembly_sha256": sha256(root / "assemblies" / "core-workspace-v3.yaml"),
+    }
+    if manifest.get("source_identity") != expected_identity:
+        fail("v3 manifest source_identity 与固定来源不一致")
+    if manifest.get("source") != expected_source or manifest.get("generator") != EXPECTED_GENERATOR:
+        fail("v3 manifest source 或 generator 身份无效")
+    expected_check_execution = {
+        "runner": "harnessctl",
+        "interpreter_resolution": "sys.executable",
+        "filesystem_mutation": "deny",
+        "direct_manifest_execution": "unsupported",
+    }
+    if manifest.get("check_execution") != expected_check_execution:
+        fail("v3 manifest check_execution 契约无效")
     entrypoint = relative_path(manifest["entrypoint"], bundle, "bundle entrypoint")
     if not entrypoint.is_file():
         fail("v3 bundle entrypoint 不存在")
@@ -485,8 +829,17 @@ def validate_bundle(root: Path, bundle: Path) -> None:
         missing = sorted(declared - actual)
         undeclared = sorted(actual - declared)
         fail(f"bundle 文件声明不一致，缺少={missing}，未声明={undeclared}")
+    scan_published_content([manifest_path, *(bundle / relative for relative in sorted(declared))])
+    bundled_capabilities = read_yaml(bundle / "config" / "capabilities.yaml")
+    capability_ids = {item["id"] for item in bundled_capabilities.get("capabilities", [])}
+    seen_checks: set[str] = set()
     for check in manifest["checks"]:
-        validate_check_definition(root, check, bundle)
+        validate_check_definition(root, check, bundle, capability_ids)
+        if check["id"] in seen_checks:
+            fail(f"manifest 含重复 check ID：{check['id']}")
+        seen_checks.add(check["id"])
+    if seen_checks != set(CHECK_CONTRACTS):
+        fail(f"manifest check 集合与内置执行契约不一致：{sorted(seen_checks)}")
 
 
 def line_count(path: Path) -> int:
@@ -551,7 +904,10 @@ def validate_legacy(root: Path) -> None:
             fail(f"兼容性 bundle 必须保持 legacy draft：{bundle_id}")
 
 
-def validate_project(root: Path) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+def validate_project(
+    root: Path,
+    run_registered_tests: bool = True,
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     configs = load_configs(root)
     validate_rule_owners(configs)
     assembly = load_assembly(root)
@@ -567,7 +923,9 @@ def validate_project(root: Path) -> tuple[dict[str, dict[str, Any]], list[dict[s
             fail("core-workspace-v3 与当前规范配置或 assembly 不一致")
     validate_budgets(root, configs)
     validate_legacy(root)
-    return configs, execute_declared_checks(root, bundle)
+    check_results = execute_declared_checks(root, bundle)
+    registered_results = execute_registered_tests(root, configs) if run_registered_tests else []
+    return configs, check_results, registered_results
 
 
 def capability_report(configs: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -603,8 +961,9 @@ def collect_health(root: Path) -> dict[str, Any]:
     blockers: list[str] = []
     configs: dict[str, dict[str, Any]] = {}
     check_results: list[dict[str, Any]] = []
+    registered_test_results: list[dict[str, Any]] = []
     try:
-        configs, check_results = validate_project(root)
+        configs, check_results, registered_test_results = validate_project(root)
     except HarnessError as exc:
         blockers.append(str(exc))
         try:
@@ -619,9 +978,21 @@ def collect_health(root: Path) -> dict[str, Any]:
     runtime_status = {name: runtime_evidence["runtimes"][name]["status"] for name in ("codex", "claude")}
     behavior_cases = root / "tests" / "behavior" / "cases.yaml"
     behavior_cases_status = read_yaml(behavior_cases).get("status") if behavior_cases.is_file() and yaml is not None else "unverified"
-    stable_eligible = bool(RUNTIME_EVIDENCE_VERIFIER_AVAILABLE and runtime_status.get("codex") == "passed" and runtime_status.get("claude") == "passed" and not blockers)
     behavior_ready = bool(RUNTIME_EVIDENCE_VERIFIER_AVAILABLE and behavior_cases_status == "passed" and runtime_status.get("codex") == "passed" and runtime_status.get("claude") == "passed")
-    candidate_eligible = not blockers and behavior_ready and all(item["severity"] != "error" for item in budgets)
+    registered_tests_ready = bool(registered_test_results and all(item["status"] == "passed" for item in registered_test_results))
+    candidate_eligible = bool(
+        not blockers
+        and not evidence_blockers
+        and behavior_ready
+        and registered_tests_ready
+        and all(item["severity"] != "error" for item in budgets)
+    )
+    stable_specific_gates = bool(
+        RUNTIME_EVIDENCE_VERIFIER_AVAILABLE
+        and runtime_status.get("codex") == "passed"
+        and runtime_status.get("claude") == "passed"
+    )
+    stable_eligible = bool(candidate_eligible and stable_specific_gates)
     check_paths: list[dict[str, Any]] = []
     manifest_path = root / "bundles/core-workspace-v3/manifest.yaml"
     if manifest_path.is_file():
@@ -637,6 +1008,13 @@ def collect_health(root: Path) -> dict[str, Any]:
     release_blockers = list(blockers) + evidence_blockers
     if not behavior_ready:
         release_blockers.append("行为测试或 Codex/Claude 真实新会话证据仍为 pending/unverified")
+    if not registered_tests_ready:
+        release_blockers.append("hard-enforced 注册测试未全部执行通过")
+    release_blockers = list(dict.fromkeys(release_blockers))
+    try:
+        requirements_coverage = validate_requirements_map(root)
+    except HarnessError as exc:
+        requirements_coverage = {"status": "blocked", "error": str(exc)}
     return {
         "bundle": {"id": "core-workspace-v3", "version": "0.1.0", "status": "draft"},
         "schema_version": configs.get("agent", {}).get("schema_version", "unavailable"),
@@ -648,9 +1026,11 @@ def collect_health(root: Path) -> dict[str, Any]:
         "checks": "passed" if check_results and all(item["status"] == "passed" for item in check_results) else "blocked",
         "check_results": check_results,
         "check_paths": check_paths,
+        "registered_test_results": registered_test_results,
+        "requirements_coverage": requirements_coverage,
         "capabilities": capabilities,
         "undeclared_or_missing_execution": [item["id"] for item in capabilities if item["enforcement"] != "hard-enforced"],
-        "static_tests": "available",
+        "static_tests": "passed" if registered_tests_ready else "blocked",
         "behavior_tests": behavior_cases_status,
         "runtime_evidence": runtime_evidence,
         "release_blockers": release_blockers,
@@ -661,8 +1041,8 @@ def collect_health(root: Path) -> dict[str, Any]:
 
 
 def run_validate(root: Path) -> int:
-    validate_project(root)
-    print("Harness v3 校验通过")
+    _, _, registered_test_results = validate_project(root)
+    print(f"Harness v3 校验通过（注册测试 {len(registered_test_results)}/{len(registered_test_results)}）")
     return 0
 
 
@@ -683,7 +1063,7 @@ def run_assemble(root: Path, check: bool) -> int:
         if output.exists():
             shutil.rmtree(output)
         shutil.copytree(expected, output)
-    validate_project(root)
+    validate_project(root, run_registered_tests=False)
     print("已确定性组装 core-workspace-v3@0.1.0+draft")
     return 0
 
@@ -711,9 +1091,16 @@ def run_doctor(root: Path) -> int:
     bash = shutil.which("bash")
     bundle = root / "bundles" / "core-workspace-v3"
     checks: list[dict[str, Any]] = []
-    if (bundle / "manifest.yaml").is_file() and yaml is not None:
+    registered_tests: list[dict[str, Any]] = []
+    requirements_coverage: dict[str, Any] = {"status": "unavailable"}
+    if configs and (bundle / "manifest.yaml").is_file() and yaml is not None:
         try:
+            assembly = load_assembly(root)
+            validate_assembly(root, configs, assembly)
+            validate_bundle(root, bundle)
             checks = execute_declared_checks(root, bundle)
+            registered_tests = execute_registered_tests(root, configs)
+            requirements_coverage = validate_requirements_map(root)
         except HarnessError as exc:
             issues.append(str(exc))
     print("Harness v3 doctor")
@@ -722,7 +1109,11 @@ def run_doctor(root: Path) -> int:
     print(f"Bash（PATH）：{'可用' if bash else '不可用'}")
     print(f"Codex 模板：{(bundle / 'runtime/codex/AGENTS.md.tmpl').is_file()}")
     print(f"Claude 模板：{(bundle / 'runtime/claude/CLAUDE.md.tmpl').is_file()}")
+    print("Hook 注册点：未注册（v3 第一阶段 Codex/Claude Turn Protocol 为 contract-only）")
+    print("Check 解释器：必须由 harnessctl 将 manifest 的 python 令牌解析为 sys.executable；不支持直接执行 manifest command")
     print("Checks：" + json.dumps(checks, ensure_ascii=False))
+    print("注册测试：" + json.dumps(registered_tests, ensure_ascii=False))
+    print("Requirements 覆盖：" + json.dumps(requirements_coverage, ensure_ascii=False))
     for item in capability_report(configs) if configs else []:
         print(f"能力 {item['id']}：{item['enforcement']} / {item['evidence']}")
     print("真实双运行时新会话证据：未验证")

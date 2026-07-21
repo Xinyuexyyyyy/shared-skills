@@ -6,11 +6,13 @@
 
 从仓库根目录运行：`python harness/harnessctl validate`、`python harness/harnessctl assemble`、`python harness/harnessctl health --json`、`python harness/harnessctl doctor`。Windows 也可使用根目录的 `harnessctl.cmd`。
 
-`validate` 检查 Schema、assembly、manifest 文件和 SHA-256、bundle 内外 checks、预算、legacy draft 与 hard-enforced 证据；`assemble` 确定性生成 v3 bundle；`health` 输出预算、能力分类、测试状态、release blocker、候选资格、稳定资格和回滚目标；`doctor` 只检查当前仓库可证明的运行环境与模板。
+`validate` 检查 Schema、assembly、manifest 文件和 SHA-256、bundle 内外 checks、隐私边界、预算、legacy draft 与 hard-enforced 证据，并实际执行注册测试；`assemble` 确定性生成 v3 bundle；`health` 输出预算、能力分类、check 与注册测试结果、release blocker、候选资格、稳定资格和回滚目标；`doctor` 只检查当前仓库可证明的运行环境与模板。
 
 当前 v3 已实现配置 Schema、确定性 assembly、manifest/检查路径校验、文件与文本预算、健康报告、静态负向测试、行为 fixture 和 draft 发布门。Codex/Claude 的 Turn Protocol 目前是 `contract-only`，真实新会话行为是 `unverified`；没有两端新会话证据时，`stable_eligible` 必须为 `false`。
 
-manifest 声明的 check 会在只读临时/仓库上下文中实际执行并记录退出码；只检查路径存在不算通过。runtime evidence 在第一阶段没有受信评测器时固定为 `unverified`，手工把 JSON 改成 `passed` 不会获得发布资格。health 在结构校验失败时返回非零退出码，`--allow-unhealthy` 仅用于明确的诊断调用。
+manifest 声明的 check 只能使用“Python 令牌、可选 `-B`、声明脚本”的严格命令结构，由 `harnessctl` 解析为当前 `sys.executable`；不支持脱离 `harnessctl` 直接执行 manifest command。check 与注册测试会在临时副本中执行，返回非零或产生文件变化都视为失败。hard-enforced 能力必须绑定预注册组件、明确覆盖该能力的 check 和真实执行通过的测试选择器。
+
+Turn Envelope 字段只由 `schemas/turn-envelope.schema.json` 规范拥有，workflow 只保存 Schema 指针和禁用持久化声明；closeout 必须精确覆盖五个结果状态。assembly 来源、生成器身份以及最终 bundle 的绝对路径、禁止运行时引用和疑似凭证赋值都会被校验。runtime evidence 在第一阶段没有受信评测器时固定为 `unverified`，手工把 JSON 改成 `passed` 不会获得发布资格；Stable 必须以前置 Candidate 门通过为条件。health 在结构校验失败时返回非零退出码，`--allow-unhealthy` 仅用于明确的诊断调用。
 
 v3 回滚目标为 `core-workspace-v2@0.1.0+draft`。第一阶段不重构业务 skills、不持久化 Turn Envelope、不启用输入捕获，也不修改全局 Agent 配置。
 

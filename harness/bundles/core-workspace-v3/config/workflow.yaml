@@ -65,14 +65,7 @@ transitions:
     to: candidate
 turn_envelope:
   persistence: disabled
-  required:
-    - task_mode
-    - gap_owner
-    - resolution
-    - risk
-    - write_scope
-    - verification_required
-    - status
+  schema: schemas/turn-envelope.schema.json
 closeout:
   required_for:
     - deliverable

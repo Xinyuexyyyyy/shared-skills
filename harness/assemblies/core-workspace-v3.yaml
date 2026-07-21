@@ -17,12 +17,17 @@ checks:
   - id: bundle-layout
     scope: bundle
     path: checks/verify-layout.py
+    capabilities:
+      - manifest-and-budget-validation
     command:
       - python
       - checks/verify-layout.py
   - id: library-smoke
     scope: library-only
     path: checks/library-smoke.py
+    capabilities:
+      - configuration-schema-validation
+      - deterministic-assembly
     command:
       - python
       - -B

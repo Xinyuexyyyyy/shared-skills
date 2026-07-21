@@ -1,9 +1,9 @@
 # Harness v3 PRD：脚本优先的跨 Agent 工作区行为制度
 
-> 版本：0.1-draft  
-> 状态：Draft，不具备升级为 stable 的条件  
-> 目标仓库：`Xinyuexyyyyy/shared-skills`  
-> 目标运行时：Codex、Claude Code  
+> 版本：0.1-draft
+> 状态：Draft，不具备升级为 stable 的条件
+> 目标仓库：`Xinyuexyyyyy/shared-skills`
+> 目标运行时：Codex、Claude Code
 > 产品边界：与设备状态、Hub、真实记忆、任务历史、凭证和日志完全分离
 
 ## 0. PRD Quality Gate
