@@ -7,14 +7,15 @@ status: draft
 description: Script-first v3 governance foundation with separated configuration and
   honest runtime capability labels
 config_schema_version: '1'
-source_config_hash: 33d9e528a37f9eedcc1a2fdb0e051e241c9067b30bb2694fdf8fd83f35f34d29
+source_config_hash: e056b0ef3544cf8da2b53d8411359becc0ffd6ce22d0519a58594e858c5027ac
 source_identity:
   base_commit: 335c2f45d9d501e59c2a4fea860f0c30282d5864
   ref: feat/reusable-harness-library
-  assembly_sha256: 4f609ad198fa6ffaa59b5fe7673599364d0786dbb7d436138235fe8da51bb622
+  assembly_sha256: 5dbc1670b42f7f67e4a31687ce860933272c84504c731a5c555fcc999f0d0f5e
 generator:
   id: harnessctl
   version: 0.1.0
+  sha256: 504db1a599592279b39e3f9839d2168828f8d4143e4704acb289fd58d2ecafad
 source:
   base_commit: 335c2f45d9d501e59c2a4fea860f0c30282d5864
   ref: feat/reusable-harness-library
@@ -48,7 +49,9 @@ capabilities: config/capabilities.yaml
 check_execution:
   runner: harnessctl
   interpreter_resolution: sys.executable
-  filesystem_mutation: deny
+  filesystem_mutation: guard-and-detect
+  isolation: python-write-guard-plus-repository-fingerprint
+  os_level_isolation: false
   direct_manifest_execution: unsupported
 checks:
 - id: bundle-layout
@@ -81,7 +84,7 @@ files:
   sha256: 2d469491936514c6032b812233c192d89e2963fc1940ae90f85a78a67c1bc881
 - path: config/policy.yaml
   role: canonical-config
-  sha256: c85c18cfc272f205ea6d10c81262f5df7a6b3499309c8c5c20c77c42830f3b6b
+  sha256: 856686a64b880f2f9db46063bb107a42ebb4ae5b78ebe2cd786d9172392fd4df
 - path: config/capabilities.yaml
   role: canonical-config
   sha256: 5a59c74c85667721faca5a83ad8b5fbd9b6afcc36196c0a06f7f98a4ef5cd3c6
@@ -96,7 +99,7 @@ files:
   sha256: 5ed09c9da280129d3254462b1c5fe3cfa6940753df1f2cd6d569816b3c64ca3e
 - path: schemas/policy.schema.json
   role: config-schema
-  sha256: ec71348700b735614f82504f38c14972096f372c3720eca07b6b0fa623b85960
+  sha256: a3694e75c0d07240a95d66d40a85ee1f46ba803b6abeb39a3344383adc0bf7ba
 - path: schemas/capabilities.schema.json
   role: config-schema
   sha256: b9f099705dd31ba32a4fb95e7816342c1db94a184f2c588cb3387635b383ec14
@@ -115,6 +118,15 @@ files:
 - path: templates/memory/MEMORY.md
   role: private-memory-template
   sha256: bb1fee13a311948c04b57c1e1ef779df514236ca5c18986aea74a5f237c5a647
+- path: templates/memory/topic.md
+  role: private-memory-template
+  sha256: 5ffb35b38822bdf886683cc802e4ee25659eae2480d349aee3a25bb9ba82b565
+- path: methods/foundation.md
+  role: method-card
+  sha256: b37663ac25926c6be2100366e22a50514ba706fa91c4e92c2c00de876ee157f0
+- path: skills/foundation/SKILL.md
+  role: builtin-skill
+  sha256: 6fef6da53d75b1dc69ee9202332503151507da6767e021c7a8341e56c2577cf3
 - path: checks/verify-layout.py
   role: bundle-check
   sha256: ba955559ce87538277db9e89655ac26ba771af8fed67147412eaa12dad435ed6

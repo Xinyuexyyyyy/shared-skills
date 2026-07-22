@@ -34,6 +34,11 @@ budgets:
     hard_lines: 200
     warning_bytes: 12288
     hard_bytes: 25600
+  memory_topic:
+    warning_lines: 0
+    hard_lines: 0
+    warning_bytes: 24576
+    hard_bytes: 32768
   core_yaml_each:
     warning_lines: 0
     hard_lines: 0

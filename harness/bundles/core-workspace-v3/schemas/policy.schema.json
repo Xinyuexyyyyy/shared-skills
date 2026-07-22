@@ -18,13 +18,14 @@
     },
     "budgets": {
       "type": "object",
-      "required": ["agents_entry", "claude_entry", "harness_entry", "always_on", "memory_index", "core_yaml_each", "core_yaml_total", "method_card", "builtin_skill"],
+      "required": ["agents_entry", "claude_entry", "harness_entry", "always_on", "memory_index", "memory_topic", "core_yaml_each", "core_yaml_total", "method_card", "builtin_skill"],
       "properties": {
         "agents_entry": {"$ref": "#/$defs/budget"},
         "claude_entry": {"$ref": "#/$defs/budget"},
         "harness_entry": {"$ref": "#/$defs/budget"},
         "always_on": {"$ref": "#/$defs/budget"},
         "memory_index": {"$ref": "#/$defs/budget"},
+        "memory_topic": {"$ref": "#/$defs/budget"},
         "core_yaml_each": {"$ref": "#/$defs/budget"},
         "core_yaml_total": {"$ref": "#/$defs/budget"},
         "method_card": {"$ref": "#/$defs/budget"},

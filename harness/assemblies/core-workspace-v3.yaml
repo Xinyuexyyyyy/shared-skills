@@ -35,6 +35,7 @@ checks:
 generator:
   id: harnessctl
   version: 0.1.0
+  sha256: 504db1a599592279b39e3f9839d2168828f8d4143e4704acb289fd58d2ecafad
 source:
   base_commit: 335c2f45d9d501e59c2a4fea860f0c30282d5864
   ref: feat/reusable-harness-library
@@ -84,6 +85,15 @@ files:
   - source: components/v3/templates/MEMORY.md
     path: templates/memory/MEMORY.md
     role: private-memory-template
+  - source: components/v3/templates/memory/topic.md
+    path: templates/memory/topic.md
+    role: private-memory-template
+  - source: components/v3/methods/foundation.md
+    path: methods/foundation.md
+    role: method-card
+  - source: components/v3/skills/foundation/SKILL.md
+    path: skills/foundation/SKILL.md
+    role: builtin-skill
   - source: components/v3/checks/verify-layout.py
     path: checks/verify-layout.py
     role: bundle-check

@@ -48,13 +48,23 @@ requirements:
       - test_declared_check_is_executed
       - test_check_command_cannot_bypass_declared_script
       - test_declared_check_runs_in_sandbox
+      - test_check_cannot_escape_sandbox
+      - test_registered_test_cannot_escape_sandbox
   - id: privacy-boundary
-    tests: [test_sensitive_bundle_content_is_rejected]
+    tests:
+      - test_sensitive_bundle_content_is_rejected
+      - test_session_history_is_not_assemblable
+      - test_structured_credential_keys_are_rejected
   - id: source-identity
-    tests: [test_manifest_contains_source_identity, test_source_identity_values_are_enforced]
+    tests:
+      - test_manifest_contains_source_identity
+      - test_source_identity_values_are_enforced
+      - test_source_provenance_requires_git_or_explicit_unverified_mode
   - id: requirements-map
-    tests: [test_requirements_map_is_enforced]
+    tests: [test_requirements_map_is_enforced, test_requirement_selector_swap_fails]
   - id: doctor
     tests: [test_doctor_reports_missing_pyyaml_without_crashing, test_doctor_reports_hook_and_interpreter_boundaries]
   - id: method-skill-budgets
     tests: [test_method_and_skill_budgets_are_consumed]
+  - id: memory-topic-budget
+    tests: [test_memory_topic_budget_hard_limit_fails]

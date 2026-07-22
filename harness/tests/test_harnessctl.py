@@ -37,10 +37,14 @@ class HarnessCtlTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def invoke(self, *args: str) -> subprocess.CompletedProcess[str]:
+    def invoke(self, *args: str, allow_unverified_provenance: bool = True) -> subprocess.CompletedProcess[str]:
         environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        command = [PYTHON, "-B", str(self.root / "harnessctl"), "--root", str(self.root)]
+        if allow_unverified_provenance:
+            command.append("--allow-unverified-provenance")
+        command.extend(args)
         return subprocess.run(
-            [PYTHON, "-B", str(self.root / "harnessctl"), "--root", str(self.root), *args],
+            command,
             text=True,
             capture_output=True,
             env=environment,
@@ -128,7 +132,7 @@ class HarnessCtlTests(unittest.TestCase):
         self.assert_failure(self.invoke("assemble"), "check 未声明覆盖")
 
     def test_stable_is_false_without_new_session_evidence(self) -> None:
-        result = self.invoke("health", "--json")
+        result = self.invoke("health", "--json", "--allow-unhealthy")
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
         self.assertFalse(report["stable_eligible"])
@@ -150,7 +154,7 @@ class HarnessCtlTests(unittest.TestCase):
         behavior_data = yaml.safe_load(behavior.read_text(encoding="utf-8"))
         behavior_data["status"] = "passed"
         behavior.write_text(yaml.safe_dump(behavior_data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-        result = self.invoke("health", "--json")
+        result = self.invoke("health", "--json", "--allow-unhealthy")
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
         self.assertFalse(report["candidate_eligible"])
@@ -215,6 +219,34 @@ class HarnessCtlTests(unittest.TestCase):
         self.assert_failure(result, "check 不得修改 sandbox")
         self.assertFalse((self.root / "check-side-effect.txt").exists())
 
+    def test_check_cannot_escape_sandbox(self) -> None:
+        escaped = self.root.parent / "escaped-check.txt"
+        script = self.root / "checks/library-smoke.py"
+        script.write_text(
+            "from pathlib import Path\n"
+            f"Path({str(escaped)!r}).write_text('must-not-land')\n"
+            + script.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        self.assert_failure(self.invoke("validate"), "check 执行失败")
+        self.assertFalse(escaped.exists())
+
+    def test_registered_test_cannot_escape_sandbox(self) -> None:
+        escaped = self.root.parent / "escaped-registration.txt"
+        path = self.root / "tests/test_harnessctl.py"
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            text.replace(
+                "import unittest\n",
+                "import unittest\nfrom pathlib import Path as _EscapePath\n"
+                f"_EscapePath({str(escaped)!r}).write_text('must-not-land')\n",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        self.assert_failure(self.invoke("validate"), "注册测试失败")
+        self.assertFalse(escaped.exists())
+
     def test_stable_requires_candidate_gate(self) -> None:
         ctl = self.root / "harnessctl"
         ctl.write_text(ctl.read_text(encoding="utf-8").replace(
@@ -237,7 +269,7 @@ class HarnessCtlTests(unittest.TestCase):
             "attestation": None,
             "note": "synthetic trusted-verifier simulation",
         }), encoding="utf-8")
-        result = self.invoke("health", "--json")
+        result = self.invoke("health", "--json", "--allow-unhealthy")
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
         self.assertFalse(report["candidate_eligible"])
@@ -283,6 +315,15 @@ class HarnessCtlTests(unittest.TestCase):
         path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
         self.assert_failure(self.invoke("assemble"), "generator 身份无效")
 
+    def test_source_provenance_requires_git_or_explicit_unverified_mode(self) -> None:
+        strict = self.invoke("validate", allow_unverified_provenance=False)
+        self.assert_failure(strict, "source provenance")
+        diagnostic = self.invoke("health", "--json")
+        self.assertEqual(diagnostic.returncode, 0, diagnostic.stderr)
+        report = json.loads(diagnostic.stdout)
+        self.assertEqual(report["source_provenance"]["status"], "unverified")
+        self.assertFalse(report["candidate_eligible"])
+
     def test_manifest_validation_direct(self) -> None:
         target = self.root / "bundles/core-workspace-v3/config/agent.yaml"
         target.write_text(target.read_text(encoding="utf-8") + "\nchanged: true\n", encoding="utf-8")
@@ -298,7 +339,7 @@ class HarnessCtlTests(unittest.TestCase):
         data = json.loads(path.read_text(encoding="utf-8"))
         data["required"][0] = "invented_field"
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        self.assert_failure(self.invoke("assemble"), "字段必须与 v3 契约精确一致")
+        self.assert_failure(self.invoke("assemble"), "required 必须与 properties 精确一致")
 
     def test_closeout_requires_exact_outcome_states(self) -> None:
         path = self.root / "config/workflow.yaml"
@@ -319,6 +360,24 @@ class HarnessCtlTests(unittest.TestCase):
             "role": "synthetic-negative-fixture",
         })
         assembly_path.write_text(yaml.safe_dump(assembly, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self.assert_failure(self.invoke("assemble"), "发布白名单")
+
+    def test_session_history_is_not_assemblable(self) -> None:
+        source = self.root / "components/v3/session-history.md"
+        source.write_text("2026-07-22\nuser-decision: private project\n", encoding="utf-8")
+        assembly_path = self.root / "assemblies/core-workspace-v3.yaml"
+        assembly = yaml.safe_load(assembly_path.read_text(encoding="utf-8"))
+        assembly["files"].append({
+            "source": "components/v3/session-history.md",
+            "path": "session-history.md",
+            "role": "runtime-entry-template",
+        })
+        assembly_path.write_text(yaml.safe_dump(assembly, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self.assert_failure(self.invoke("assemble"), "发布白名单")
+
+    def test_structured_credential_keys_are_rejected(self) -> None:
+        source = self.root / "components/v3/templates/memory/topic.md"
+        source.write_text("access_token: ghp_synthetic_not_real\n", encoding="utf-8")
         self.assert_failure(self.invoke("assemble"), "疑似包含凭证赋值")
 
     def test_requirements_map_is_enforced(self) -> None:
@@ -326,7 +385,16 @@ class HarnessCtlTests(unittest.TestCase):
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         data["requirements"][0]["tests"][0] = "test_does_not_exist"
         path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-        self.assert_failure(self.invoke("assemble"), "引用未知测试")
+        self.assert_failure(self.invoke("assemble"), "语义契约不一致")
+
+    def test_requirement_selector_swap_fails(self) -> None:
+        path = self.root / "tests/requirements-map.yaml"
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        first = next(item for item in data["requirements"] if item["id"] == "config-schema")
+        second = next(item for item in data["requirements"] if item["id"] == "doctor")
+        first["tests"], second["tests"] = second["tests"], first["tests"]
+        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self.assert_failure(self.invoke("assemble"), "语义契约不一致")
 
     def test_doctor_reports_hook_and_interpreter_boundaries(self) -> None:
         result = self.invoke("doctor")
@@ -335,13 +403,19 @@ class HarnessCtlTests(unittest.TestCase):
         self.assertIn("sys.executable", result.stdout)
 
     def test_method_and_skill_budgets_are_consumed(self) -> None:
-        source = self.root / "components/v3/runtime/oversized-SKILL.md"
+        source = self.root / "components/v3/skills/foundation/SKILL.md"
+        original = source.read_text(encoding="utf-8")
         source.write_text("\n".join(f"line {index}" for index in range(501)), encoding="utf-8")
-        assembly_path = self.root / "assemblies/core-workspace-v3.yaml"
-        assembly = yaml.safe_load(assembly_path.read_text(encoding="utf-8"))
-        assembly["files"].append({"source": "components/v3/runtime/oversized-SKILL.md", "path": "skills/oversized/SKILL.md", "role": "test-skill"})
-        assembly_path.write_text(yaml.safe_dump(assembly, allow_unicode=True, sort_keys=False), encoding="utf-8")
         self.assert_failure(self.invoke("assemble"), "文件预算超过硬上限")
+        source.write_text(original, encoding="utf-8")
+        method = self.root / "components/v3/methods/foundation.md"
+        method.write_text("x" * (12 * 1024 + 1), encoding="utf-8")
+        self.assert_failure(self.invoke("assemble"), "文件预算超过硬上限")
+
+    def test_memory_topic_budget_hard_limit_fails(self) -> None:
+        source = self.root / "components/v3/templates/memory/topic.md"
+        source.write_text("x" * (32 * 1024 + 1), encoding="utf-8")
+        self.assert_failure(self.invoke("assemble"), "memory-topic")
 
     def test_assemble_does_not_write_pycache_into_bundle(self) -> None:
         result = self.invoke("assemble")
@@ -358,7 +432,7 @@ class HarnessCtlTests(unittest.TestCase):
         result = self.invoke("health", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
-        for field in ("bundle", "schema_version", "budgets", "checks", "check_paths", "check_results", "registered_test_results", "requirements_coverage", "capabilities", "release_blockers", "candidate_eligible", "stable_eligible", "rollback_target"):
+        for field in ("bundle", "schema_version", "budgets", "checks", "check_paths", "check_results", "registered_test_results", "requirements_coverage", "source_provenance", "capabilities", "release_blockers", "candidate_eligible", "stable_eligible", "rollback_target"):
             self.assertIn(field, report)
         self.assertEqual(report["static_tests"], "passed")
         self.assertEqual(report["requirements_coverage"]["mapped_tests"], report["requirements_coverage"]["discovered_tests"])

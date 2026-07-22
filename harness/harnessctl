@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -30,13 +31,17 @@ CONFIG_NAMES = ("agent", "workflow", "memory", "policy", "capabilities")
 LEGACY_BUNDLES = ("core-workspace-v1", "core-workspace-v2")
 ENFORCEMENT_LEVELS = {"hard-enforced", "contract-only", "eval-only", "unverified"}
 CHECK_SCOPES = {"bundle", "library-only"}
+CHECK_EXECUTION_CONTRACT = {
+    "runner": "harnessctl",
+    "interpreter_resolution": "sys.executable",
+    "filesystem_mutation": "guard-and-detect",
+    "isolation": "python-write-guard-plus-repository-fingerprint",
+    "os_level_isolation": False,
+    "direct_manifest_execution": "unsupported",
+}
 EXPECTED_SOURCE_BASE = "335c2f45d9d501e59c2a4fea860f0c30282d5864"
 EXPECTED_SOURCE_REF = "feat/reusable-harness-library"
 EXPECTED_GENERATOR = {"id": "harnessctl", "version": "0.1.0"}
-TURN_ENVELOPE_FIELDS = {
-    "task_mode", "gap_owner", "resolution", "risk", "write_scope",
-    "verification_required", "status",
-}
 GAP_OWNERS = {"user", "evidence", "method", "spec", "execution", "authority"}
 CLOSEOUT_STATES = {"deliverable", "partial", "blocked", "failed", "stopped"}
 CLOSEOUT_FIELDS = {"result", "shortest_acceptance", "unfinished", "adjacent_next_step"}
@@ -46,7 +51,93 @@ REQUIRED_REQUIREMENTS = {
     "legacy-draft", "hard-enforced-evidence", "stable-gate", "no-pycache",
     "synthetic-fixtures", "health-json", "workflow-semantics", "check-execution",
     "privacy-boundary", "source-identity", "requirements-map", "doctor",
+    "memory-topic-budget", "method-skill-budgets",
 }
+
+# A requirement is evidence-backed only when its declared selector set matches
+# this semantic contract. Merely referencing existing test names is insufficient.
+REQUIREMENT_TEST_CONTRACTS = {
+    "config-schema": ["test_five_configs_and_schemas_validate", "test_invalid_nested_policy_boolean_fails_schema"],
+    "missing-config": ["test_missing_required_config_fails"],
+    "manifest-check-path": ["test_missing_manifest_check_path_fails"],
+    "check-scope": ["test_bundle_and_library_only_checks_are_distinguished"],
+    "manifest-sha": ["test_manifest_sha_mismatch_fails", "test_manifest_validation_direct"],
+    "undeclared-file": ["test_undeclared_bundle_file_fails"],
+    "entry-budget": ["test_entry_budget_hard_limit_fails"],
+    "deterministic-assembly": ["test_two_assemblies_are_deterministic"],
+    "legacy-draft": ["test_v1_and_v2_remain_legacy_drafts"],
+    "hard-enforced-evidence": [
+        "test_hard_enforced_capability_without_script_fails",
+        "test_hard_enforced_script_must_match_registration",
+        "test_hard_enforced_check_must_cover_capability",
+        "test_hard_enforced_evidence_requires_registry_coverage",
+        "test_registered_tests_are_executed",
+        "test_registered_selector_cannot_be_reassigned",
+    ],
+    "stable-gate": [
+        "test_stable_is_false_without_new_session_evidence",
+        "test_manual_passed_runtime_evidence_cannot_promote",
+        "test_stable_requires_candidate_gate",
+    ],
+    "no-pycache": ["test_assemble_does_not_write_pycache_into_bundle"],
+    "synthetic-fixtures": ["test_fixtures_are_synthetic"],
+    "health-json": ["test_health_json_has_stable_fields", "test_health_returns_nonzero_for_invalid_health"],
+    "workflow-semantics": [
+        "test_workflow_ghost_state_and_terminal_exit_fail",
+        "test_turn_envelope_schema_is_single_field_owner",
+        "test_closeout_requires_exact_outcome_states",
+    ],
+    "check-execution": [
+        "test_declared_check_is_executed",
+        "test_check_command_cannot_bypass_declared_script",
+        "test_declared_check_runs_in_sandbox",
+        "test_check_cannot_escape_sandbox",
+        "test_registered_test_cannot_escape_sandbox",
+    ],
+    "privacy-boundary": [
+        "test_sensitive_bundle_content_is_rejected",
+        "test_session_history_is_not_assemblable",
+        "test_structured_credential_keys_are_rejected",
+    ],
+    "source-identity": [
+        "test_manifest_contains_source_identity",
+        "test_source_identity_values_are_enforced",
+        "test_source_provenance_requires_git_or_explicit_unverified_mode",
+    ],
+    "requirements-map": [
+        "test_requirements_map_is_enforced",
+        "test_requirement_selector_swap_fails",
+    ],
+    "doctor": ["test_doctor_reports_missing_pyyaml_without_crashing", "test_doctor_reports_hook_and_interpreter_boundaries"],
+    "memory-topic-budget": ["test_memory_topic_budget_hard_limit_fails"],
+    "method-skill-budgets": ["test_method_and_skill_budgets_are_consumed"],
+}
+
+# v3 is intentionally an allowlisted publication, not an arbitrary file copier.
+ASSEMBLY_FILE_CONTRACTS = {
+    ("config/agent.yaml", "config/agent.yaml", "canonical-config"),
+    ("config/workflow.yaml", "config/workflow.yaml", "canonical-config"),
+    ("config/memory.yaml", "config/memory.yaml", "canonical-config"),
+    ("config/policy.yaml", "config/policy.yaml", "canonical-config"),
+    ("config/capabilities.yaml", "config/capabilities.yaml", "canonical-config"),
+    ("schemas/agent.schema.json", "schemas/agent.schema.json", "config-schema"),
+    ("schemas/workflow.schema.json", "schemas/workflow.schema.json", "config-schema"),
+    ("schemas/memory.schema.json", "schemas/memory.schema.json", "config-schema"),
+    ("schemas/policy.schema.json", "schemas/policy.schema.json", "config-schema"),
+    ("schemas/capabilities.schema.json", "schemas/capabilities.schema.json", "config-schema"),
+    ("schemas/turn-envelope.schema.json", "schemas/turn-envelope.schema.json", "turn-envelope-schema"),
+    ("components/v3/runtime/HARNESS.md.tmpl", "runtime/common/HARNESS.md.tmpl", "runtime-entry-template"),
+    ("components/v3/runtime/AGENTS.md.tmpl", "runtime/codex/AGENTS.md.tmpl", "runtime-entry-template"),
+    ("components/v3/runtime/CLAUDE.md.tmpl", "runtime/claude/CLAUDE.md.tmpl", "runtime-entry-template"),
+    ("components/v3/templates/MEMORY.md", "templates/memory/MEMORY.md", "private-memory-template"),
+    ("components/v3/templates/memory/topic.md", "templates/memory/topic.md", "private-memory-template"),
+    ("components/v3/methods/foundation.md", "methods/foundation.md", "method-card"),
+    ("components/v3/skills/foundation/SKILL.md", "skills/foundation/SKILL.md", "builtin-skill"),
+    ("components/v3/checks/verify-layout.py", "checks/verify-layout.py", "bundle-check"),
+}
+ALLOWED_BUNDLE_FILES = {target for _, target, _ in ASSEMBLY_FILE_CONTRACTS}
+BUNDLE_FILE_ROLES = {target: role for _, target, role in ASSEMBLY_FILE_CONTRACTS}
+APPROVED_MEMORY_TEMPLATE_SHA256 = "bb1fee13a311948c04b57c1e1ef779df514236ca5c18986aea74a5f237c5a647"
 REGISTRATION_CONTRACTS = {
     "harnessctl.validate": {
         "script": "harnessctl",
@@ -104,6 +195,143 @@ def fail(message: str) -> None:
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def git_command(root: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def verify_source_provenance(root: Path, assembly: dict[str, Any], allow_unverified: bool = False) -> dict[str, Any]:
+    """Verify the declared source ref, or explicitly report an unverified copy."""
+    def unverified(reason: str) -> dict[str, Any]:
+        if not allow_unverified:
+            fail(f"无法验证 source provenance：{reason}")
+        return {"status": "unverified", "reason": reason}
+
+    discovered = git_command(root, "rev-parse", "--show-toplevel")
+    if discovered is None or discovered.returncode != 0:
+        return unverified("当前 Harness 不在 Git 工作树中；请使用真实 clone，或显式使用 --allow-unverified-provenance 进行诊断")
+    repo_root = Path(discovered.stdout.strip()).resolve()
+    base = git_command(root, "rev-parse", "--verify", f"{EXPECTED_SOURCE_BASE}^{{commit}}")
+    if base is None or base.returncode != 0:
+        return unverified("缺少预期 base commit")
+    ref_sha: str | None = None
+    for ref in (f"refs/heads/{EXPECTED_SOURCE_REF}", f"refs/remotes/origin/{EXPECTED_SOURCE_REF}", EXPECTED_SOURCE_REF):
+        resolved = git_command(root, "rev-parse", "--verify", ref)
+        if resolved is not None and resolved.returncode == 0:
+            ref_sha = resolved.stdout.strip()
+            break
+    if ref_sha != EXPECTED_SOURCE_BASE:
+        return unverified("声明 ref 未解析到预期 base commit")
+    head = git_command(root, "rev-parse", "HEAD")
+    if head is None or head.returncode != 0:
+        return unverified("无法读取当前 Git HEAD")
+    ancestor = git_command(root, "merge-base", "--is-ancestor", EXPECTED_SOURCE_BASE, head.stdout.strip())
+    if ancestor is None or ancestor.returncode != 0:
+        return unverified("当前 HEAD 不包含预期 source base commit")
+    provenance_paths = {
+        "harnessctl",
+        "assemblies/core-workspace-v3.yaml",
+        "tests/requirements-map.yaml",
+        "tests/test-registry.yaml",
+        "tests/test_harnessctl.py",
+        *(str(entry.get("source", "")) for entry in assembly.get("files", [])),
+    }
+    for path in sorted(provenance_paths):
+        try:
+            repo_path = (root / path).resolve().relative_to(root.resolve())
+        except ValueError:
+            return unverified(f"provenance 文件不在 Git 工作树内：{path}")
+        tracked = git_command(root, "ls-files", "--error-unmatch", "--", repo_path.as_posix())
+        if tracked is None or tracked.returncode != 0:
+            return unverified(f"provenance 文件未被 Git 跟踪：{path}")
+        for diff_args in (("diff", "--quiet", "HEAD", "--", repo_path.as_posix()), ("diff", "--cached", "--quiet", "--", repo_path.as_posix())):
+            dirty = git_command(root, *diff_args)
+            if dirty is None or dirty.returncode != 0:
+                return unverified(f"provenance 文件存在未提交修改：{path}")
+    return {"status": "verified", "repo_root": repo_root.as_posix(), "ref": EXPECTED_SOURCE_REF, "base_commit": EXPECTED_SOURCE_BASE}
+
+
+SANDBOX_SITECUSTOMIZE = textwrap.dedent(
+    r'''
+    import builtins
+    import io
+    import os
+    from pathlib import Path
+
+    _root = Path(os.environ["HARNESS_SANDBOX_ROOT"]).resolve()
+
+    def _resolve(value):
+        candidate = Path(os.fsdecode(value))
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        return candidate.resolve(strict=False)
+
+    def _guard(value):
+        candidate = _resolve(value)
+        try:
+            candidate.relative_to(_root)
+        except ValueError as exc:
+            raise PermissionError(f"Harness sandbox denied filesystem mutation: {candidate}") from exc
+
+    _open = builtins.open
+    def _safe_open(file, mode="r", *args, **kwargs):
+        if any(flag in mode for flag in ("w", "a", "x", "+")):
+            _guard(file)
+        return _open(file, mode, *args, **kwargs)
+    builtins.open = _safe_open
+    io.open = _safe_open
+
+    _os_open = os.open
+    def _safe_os_open(file, flags, *args, **kwargs):
+        if flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
+            _guard(file)
+        return _os_open(file, flags, *args, **kwargs)
+    os.open = _safe_os_open
+
+    def _one(name):
+        original = getattr(os, name)
+        def guarded(path, *args, **kwargs):
+            _guard(path)
+            return original(path, *args, **kwargs)
+        setattr(os, name, guarded)
+
+    for _name in ("unlink", "remove", "mkdir", "makedirs", "rmdir", "chdir"):
+        _one(_name)
+
+    for _name in ("rename", "replace", "link", "symlink"):
+        _original = getattr(os, _name)
+        def _two(first, second, *args, _original=_original, **kwargs):
+            _guard(first)
+            _guard(second)
+            return _original(first, second, *args, **kwargs)
+        setattr(os, _name, _two)
+    '''
+).strip() + "\n"
+
+
+def sandbox_environment(sandbox: Path, allowed_root: Path) -> dict[str, str]:
+    hook_root = sandbox / "__harness_sandbox__"
+    hook_root.mkdir(parents=True, exist_ok=True)
+    (hook_root / "sitecustomize.py").write_text(SANDBOX_SITECUSTOMIZE, encoding="utf-8")
+    temp_root = sandbox / "tmp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    environment["HARNESS_SANDBOX_ROOT"] = str(allowed_root.resolve())
+    environment["TMPDIR"] = str(temp_root)
+    environment["TEMP"] = str(temp_root)
+    environment["TMP"] = str(temp_root)
+    environment["PYTHONPATH"] = str(hook_root) + os.pathsep + environment.get("PYTHONPATH", "")
+    return environment
 
 
 def read_yaml(path: Path) -> dict[str, Any]:
@@ -264,8 +492,11 @@ def load_assembly(root: Path) -> dict[str, Any]:
         fail("v3 assembly source.base_commit 必须是 40 位小写 Git SHA")
     if base_commit != EXPECTED_SOURCE_BASE or source.get("ref") != EXPECTED_SOURCE_REF:
         fail("v3 assembly source 身份与固定基准不一致")
-    if assembly.get("generator") != EXPECTED_GENERATOR:
+    generator = assembly.get("generator")
+    if not isinstance(generator, dict) or {key: generator.get(key) for key in EXPECTED_GENERATOR} != EXPECTED_GENERATOR:
         fail("v3 assembly generator 身份无效")
+    if generator.get("sha256") != sha256(root / "harnessctl"):
+        fail("v3 assembly generator SHA-256 与实际 harnessctl 不一致")
     return assembly
 
 
@@ -367,6 +598,9 @@ def validate_requirements_map(root: Path) -> dict[str, Any]:
         seen_requirements.add(requirement_id)
         if not isinstance(tests, list) or not tests or len(tests) != len(set(tests)):
             fail(f"requirement 测试映射无效或重复：{requirement_id}")
+        expected_tests = REQUIREMENT_TEST_CONTRACTS.get(requirement_id)
+        if expected_tests is None or tests != expected_tests:
+            fail(f"requirement -> selector 语义契约不一致：{requirement_id}")
         unknown = set(tests) - discovered
         if unknown:
             fail(f"requirements-map 引用未知测试：{requirement_id} -> {sorted(unknown)}")
@@ -374,6 +608,8 @@ def validate_requirements_map(root: Path) -> dict[str, Any]:
     missing_requirements = REQUIRED_REQUIREMENTS - seen_requirements
     if missing_requirements:
         fail(f"requirements-map 缺少关键 requirement：{sorted(missing_requirements)}")
+    if seen_requirements != set(REQUIREMENT_TEST_CONTRACTS):
+        fail("requirements-map 与内置 requirement 契约集合不一致")
     unmapped = discovered - mapped
     if unmapped:
         fail(f"requirements-map 存在未映射测试：{sorted(unmapped)}")
@@ -400,11 +636,16 @@ def validate_assembly(root: Path, configs: dict[str, dict[str, Any]], assembly: 
     for entry in assembly["files"]:
         if not isinstance(entry, dict):
             fail("assembly files 必须是映射列表")
-        source = relative_path(entry.get("source"), root, "assembly source")
+        source_value = entry.get("source")
+        source = relative_path(source_value, root, "assembly source")
         target_value = entry.get("path")
         if not isinstance(target_value, str) or not target_value:
             fail("assembly file 缺少 path")
         target = Path(target_value).as_posix()
+        role = entry.get("role")
+        contract = (Path(source_value).as_posix(), target, role)
+        if contract not in ASSEMBLY_FILE_CONTRACTS:
+            fail(f"assembly 文件不在 v3 发布白名单中：{contract}")
         if target in targets:
             fail(f"assembly 含重复目标文件：{target}")
         targets.add(target)
@@ -506,8 +747,8 @@ def validate_workflow_semantics(root: Path, workflow: dict[str, Any]) -> None:
         fail(f"无法读取 Turn Envelope Schema：{exc}")
     schema_required = set(envelope_schema.get("required", []))
     schema_properties = set(envelope_schema.get("properties", {}))
-    if schema_required != TURN_ENVELOPE_FIELDS or schema_properties != TURN_ENVELOPE_FIELDS:
-        fail("Turn Envelope Schema 字段必须与 v3 契约精确一致")
+    if not schema_required or schema_required != schema_properties:
+        fail("Turn Envelope Schema required 必须与 properties 精确一致")
     if envelope_schema.get("additionalProperties") is not False:
         fail("Turn Envelope Schema 必须拒绝额外字段")
     gap_owner_schema = envelope_schema["properties"].get("gap_owner", {})
@@ -573,14 +814,25 @@ def validate_check_definition(
         fail(f"check 路径不存在：{check['id']} -> {path}")
 
 
+def filesystem_scope(root: Path) -> Path:
+    """Return the repository scope used for mutation detection."""
+    discovered = git_command(root, "rev-parse", "--show-toplevel")
+    if discovered is not None and discovered.returncode == 0 and discovered.stdout.strip():
+        return Path(discovered.stdout.strip()).resolve()
+    # A copied harness has no .git metadata; include its containing test/repo
+    # directory so sibling writes cannot be mistaken for no mutation.
+    resolved = root.resolve()
+    return resolved.parent if resolved.name.lower() == "harness" else resolved
+
+
 def execute_declared_checks(root: Path, bundle: Path) -> list[dict[str, Any]]:
     manifest = read_yaml(bundle / "manifest.yaml")
     results: list[dict[str, Any]] = []
     for check in manifest.get("checks", []):
         command = list(check["command"])
         command[0] = sys.executable
-        environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-        repository_before = tree_fingerprint(root)
+        repository_scope = filesystem_scope(root)
+        repository_before = tree_fingerprint(repository_scope)
         with tempfile.TemporaryDirectory(prefix="harness-check-") as temporary:
             sandbox = Path(temporary)
             if check["scope"] == "bundle":
@@ -589,6 +841,7 @@ def execute_declared_checks(root: Path, bundle: Path) -> list[dict[str, Any]]:
             else:
                 base = sandbox / "library"
                 shutil.copytree(root, base, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            environment = sandbox_environment(sandbox, sandbox)
             sandbox_before = tree_fingerprint(sandbox)
             try:
                 completed = subprocess.run(
@@ -603,7 +856,7 @@ def execute_declared_checks(root: Path, bundle: Path) -> list[dict[str, Any]]:
             except (OSError, subprocess.TimeoutExpired) as exc:
                 fail(f"check 执行失败：{check['id']}: {exc}")
             sandbox_after = tree_fingerprint(sandbox)
-        if tree_fingerprint(root) != repository_before:
+        if tree_fingerprint(repository_scope) != repository_before:
             fail(f"check 意外修改真实 Harness：{check['id']}")
         if sandbox_after != sandbox_before:
             fail(f"check 不得修改 sandbox：{check['id']}")
@@ -625,12 +878,13 @@ def execute_registered_tests(root: Path, configs: dict[str, dict[str, Any]]) -> 
     entries = load_test_registry(root, capability_ids)
     results: list[dict[str, Any]] = []
     for entry in entries:
-        environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-        repository_before = tree_fingerprint(root)
+        repository_scope = filesystem_scope(root)
+        repository_before = tree_fingerprint(repository_scope)
         with tempfile.TemporaryDirectory(prefix="harness-evidence-") as temporary:
             sandbox = Path(temporary)
             base = sandbox / "library"
             shutil.copytree(root, base, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            environment = sandbox_environment(sandbox, sandbox)
             sandbox_before = tree_fingerprint(sandbox)
             command = [sys.executable, "-B", entry["path"], *entry["selectors"]]
             try:
@@ -646,7 +900,7 @@ def execute_registered_tests(root: Path, configs: dict[str, dict[str, Any]]) -> 
             except (OSError, subprocess.TimeoutExpired) as exc:
                 fail(f"注册测试执行失败：{entry['id']}: {exc}")
             sandbox_after = tree_fingerprint(sandbox)
-        if tree_fingerprint(root) != repository_before:
+        if tree_fingerprint(repository_scope) != repository_before:
             fail(f"注册测试意外修改真实 Harness：{entry['id']}")
         if sandbox_after != sandbox_before:
             fail(f"注册测试不得修改 sandbox：{entry['id']}")
@@ -704,10 +958,7 @@ def manifest_payload(root: Path, configs: dict[str, dict[str, Any]], assembly: d
         "runtime_adapters": assembly["runtime_adapters"],
         "capabilities": "config/capabilities.yaml",
         "check_execution": {
-            "runner": "harnessctl",
-            "interpreter_resolution": "sys.executable",
-            "filesystem_mutation": "deny",
-            "direct_manifest_execution": "unsupported",
+            **CHECK_EXECUTION_CONTRACT,
         },
         "checks": assembly["checks"],
         "files": files,
@@ -754,7 +1005,12 @@ def scan_published_content(paths: list[Path]) -> None:
     )
     file_url = re.compile(r"\bfile://", re.IGNORECASE)
     forbidden_runtime = re.compile(r"\b(?:" + "|".join(forbidden_names) + r")\b", re.IGNORECASE)
-    credential_words = ("pass" + "word", "to" + "ken", "se" + "cret", "api" + "[_-]?key")
+    credential_words = (
+        "pass" + "word", "passwd", "to" + "ken", "access[_-]?token",
+        "refresh[_-]?token", "auth[_-]?token", "client[_-]?secret",
+        "private[_-]?key", "api[_-]?key", "secret[_-]?key", "credential",
+        "authorization", "cookie", "session[_-]?token",
+    )
     credential_assignment = re.compile(
         r"\b(?:" + "|".join(credential_words) + r")\b\s*[:=]\s*[\"']?"
         r"(?!<redacted>|example|null|none)[^\s\"']+",
@@ -774,6 +1030,11 @@ def scan_published_content(paths: list[Path]) -> None:
             fail(f"发布内容包含禁止的运行时或设备引用：{path}")
         if credential_assignment.search(text):
             fail(f"发布内容疑似包含凭证赋值：{path}")
+        history_marker = re.compile(
+            r"(?im)^\s*(?:session[-_ ]history|timeline|decision(?:s)?|user(?:[-_ ]decision|[-_ ]preference)?|private[-_ ]project)\s*[:=]"
+        )
+        if history_marker.search(text):
+            fail(f"发布内容疑似包含真实记忆或会话历史：{path}")
 
 
 def validate_bundle(root: Path, bundle: Path) -> None:
@@ -795,14 +1056,14 @@ def validate_bundle(root: Path, bundle: Path) -> None:
     }
     if manifest.get("source_identity") != expected_identity:
         fail("v3 manifest source_identity 与固定来源不一致")
-    if manifest.get("source") != expected_source or manifest.get("generator") != EXPECTED_GENERATOR:
-        fail("v3 manifest source 或 generator 身份无效")
-    expected_check_execution = {
-        "runner": "harnessctl",
-        "interpreter_resolution": "sys.executable",
-        "filesystem_mutation": "deny",
-        "direct_manifest_execution": "unsupported",
-    }
+    if manifest.get("source") != expected_source:
+        fail("v3 manifest source 身份无效")
+    generator = manifest.get("generator")
+    if not isinstance(generator, dict) or {key: generator.get(key) for key in EXPECTED_GENERATOR} != EXPECTED_GENERATOR:
+        fail("v3 manifest generator 身份无效")
+    if generator.get("sha256") != sha256(root / "harnessctl"):
+        fail("v3 manifest generator SHA-256 与实际 harnessctl 不一致")
+    expected_check_execution = CHECK_EXECUTION_CONTRACT
     if manifest.get("check_execution") != expected_check_execution:
         fail("v3 manifest check_execution 契约无效")
     entrypoint = relative_path(manifest["entrypoint"], bundle, "bundle entrypoint")
@@ -819,6 +1080,8 @@ def validate_bundle(root: Path, bundle: Path) -> None:
         if relative in declared:
             fail(f"manifest 含重复文件：{relative}")
         declared.add(relative)
+        if relative not in ALLOWED_BUNDLE_FILES or item["role"] != BUNDLE_FILE_ROLES[relative]:
+            fail(f"manifest 文件不在 v3 发布白名单中：{relative}")
         path = relative_path(relative, bundle, "manifest file")
         if not path.is_file():
             fail(f"manifest 文件不存在：{relative}")
@@ -857,6 +1120,8 @@ def budget_items(root: Path, policy: dict[str, Any]) -> list[dict[str, Any]]:
         {"id": "core-yaml-total", "paths": [bundle / "config" / f"{name}.yaml" for name in CONFIG_NAMES], **policy["budgets"]["core_yaml_total"]},
     ]
     for path in sorted(bundle.rglob("*.md")):
+        if "templates" in path.parts and "memory" in path.parts and path.name != "MEMORY.md":
+            items.append({"id": f"memory-topic:{path.relative_to(bundle).as_posix()}", "paths": [path], **policy["budgets"]["memory_topic"]})
         if path.name == "SKILL.md" and "skills" in path.parts:
             items.append({"id": f"builtin-skill:{path.relative_to(bundle).as_posix()}", "paths": [path], **policy["budgets"]["builtin_skill"]})
         if "methods" in path.parts:
@@ -907,10 +1172,12 @@ def validate_legacy(root: Path) -> None:
 def validate_project(
     root: Path,
     run_registered_tests: bool = True,
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    allow_unverified_provenance: bool = False,
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     configs = load_configs(root)
     validate_rule_owners(configs)
     assembly = load_assembly(root)
+    provenance = verify_source_provenance(root, assembly, allow_unverified_provenance)
     validate_assembly(root, configs, assembly)
     bundle = root / "bundles" / "core-workspace-v3"
     if not bundle.is_dir():
@@ -925,7 +1192,7 @@ def validate_project(
     validate_legacy(root)
     check_results = execute_declared_checks(root, bundle)
     registered_results = execute_registered_tests(root, configs) if run_registered_tests else []
-    return configs, check_results, registered_results
+    return configs, check_results, registered_results, provenance
 
 
 def capability_report(configs: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -957,13 +1224,16 @@ def load_runtime_evidence(root: Path) -> tuple[dict[str, Any], list[str]]:
     return evidence, blockers
 
 
-def collect_health(root: Path) -> dict[str, Any]:
+def collect_health(root: Path, allow_unverified_provenance: bool = False) -> dict[str, Any]:
     blockers: list[str] = []
     configs: dict[str, dict[str, Any]] = {}
     check_results: list[dict[str, Any]] = []
     registered_test_results: list[dict[str, Any]] = []
+    source_provenance: dict[str, Any] = {"status": "unverified", "reason": "validation did not complete"}
     try:
-        configs, check_results, registered_test_results = validate_project(root)
+        configs, check_results, registered_test_results, source_provenance = validate_project(
+            root, allow_unverified_provenance=allow_unverified_provenance
+        )
     except HarnessError as exc:
         blockers.append(str(exc))
         try:
@@ -985,6 +1255,8 @@ def collect_health(root: Path) -> dict[str, Any]:
         and not evidence_blockers
         and behavior_ready
         and registered_tests_ready
+        and source_provenance.get("status") == "verified"
+        and CHECK_EXECUTION_CONTRACT["os_level_isolation"]
         and all(item["severity"] != "error" for item in budgets)
     )
     stable_specific_gates = bool(
@@ -1006,6 +1278,10 @@ def collect_health(root: Path) -> dict[str, Any]:
         except HarnessError as exc:
             blockers.append(str(exc))
     release_blockers = list(blockers) + evidence_blockers
+    if not CHECK_EXECUTION_CONTRACT["os_level_isolation"]:
+        release_blockers.append("check/注册测试尚无操作系统级只读文件系统隔离；当前仅有 Python 写入拦截与仓库范围指纹")
+    if source_provenance.get("status") != "verified":
+        release_blockers.append("source provenance 未验证；诊断模式不能获得 Candidate/Stable 资格")
     if not behavior_ready:
         release_blockers.append("行为测试或 Codex/Claude 真实新会话证据仍为 pending/unverified")
     if not registered_tests_ready:
@@ -1025,9 +1301,11 @@ def collect_health(root: Path) -> dict[str, Any]:
         "health_status": "healthy" if not blockers else "blocked",
         "checks": "passed" if check_results and all(item["status"] == "passed" for item in check_results) else "blocked",
         "check_results": check_results,
+        "check_execution": CHECK_EXECUTION_CONTRACT,
         "check_paths": check_paths,
         "registered_test_results": registered_test_results,
         "requirements_coverage": requirements_coverage,
+        "source_provenance": source_provenance,
         "capabilities": capabilities,
         "undeclared_or_missing_execution": [item["id"] for item in capabilities if item["enforcement"] != "hard-enforced"],
         "static_tests": "passed" if registered_tests_ready else "blocked",
@@ -1040,16 +1318,20 @@ def collect_health(root: Path) -> dict[str, Any]:
     }
 
 
-def run_validate(root: Path) -> int:
-    _, _, registered_test_results = validate_project(root)
+def run_validate(root: Path, allow_unverified_provenance: bool) -> int:
+    _, _, registered_test_results, provenance = validate_project(
+        root, allow_unverified_provenance=allow_unverified_provenance
+    )
     print(f"Harness v3 校验通过（注册测试 {len(registered_test_results)}/{len(registered_test_results)}）")
+    print("Source provenance：" + json.dumps(provenance, ensure_ascii=False, sort_keys=True))
     return 0
 
 
-def run_assemble(root: Path, check: bool) -> int:
+def run_assemble(root: Path, check: bool, allow_unverified_provenance: bool) -> int:
     configs = load_configs(root)
     validate_rule_owners(configs)
     assembly = load_assembly(root)
+    verify_source_provenance(root, assembly, allow_unverified_provenance)
     validate_assembly(root, configs, assembly)
     output = root / "bundles" / "core-workspace-v3"
     with tempfile.TemporaryDirectory(prefix="harness-v3-") as temporary:
@@ -1063,13 +1345,17 @@ def run_assemble(root: Path, check: bool) -> int:
         if output.exists():
             shutil.rmtree(output)
         shutil.copytree(expected, output)
-    validate_project(root, run_registered_tests=False)
+    validate_project(
+        root,
+        run_registered_tests=False,
+        allow_unverified_provenance=allow_unverified_provenance,
+    )
     print("已确定性组装 core-workspace-v3@0.1.0+draft")
     return 0
 
 
-def run_health(root: Path, as_json: bool, allow_unhealthy: bool) -> int:
-    report = collect_health(root)
+def run_health(root: Path, as_json: bool, allow_unhealthy: bool, allow_unverified_provenance: bool) -> int:
+    report = collect_health(root, allow_unverified_provenance)
     if as_json:
         print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     else:
@@ -1081,7 +1367,7 @@ def run_health(root: Path, as_json: bool, allow_unhealthy: bool) -> int:
     return 0 if report["health_status"] != "blocked" or allow_unhealthy else 1
 
 
-def run_doctor(root: Path) -> int:
+def run_doctor(root: Path, allow_unverified_provenance: bool) -> int:
     configs: dict[str, dict[str, Any]] = {}
     issues: list[str] = []
     try:
@@ -1093,9 +1379,11 @@ def run_doctor(root: Path) -> int:
     checks: list[dict[str, Any]] = []
     registered_tests: list[dict[str, Any]] = []
     requirements_coverage: dict[str, Any] = {"status": "unavailable"}
+    source_provenance: dict[str, Any] = {"status": "unverified", "reason": "not checked"}
     if configs and (bundle / "manifest.yaml").is_file() and yaml is not None:
         try:
             assembly = load_assembly(root)
+            source_provenance = verify_source_provenance(root, assembly, allow_unverified_provenance)
             validate_assembly(root, configs, assembly)
             validate_bundle(root, bundle)
             checks = execute_declared_checks(root, bundle)
@@ -1111,9 +1399,11 @@ def run_doctor(root: Path) -> int:
     print(f"Claude 模板：{(bundle / 'runtime/claude/CLAUDE.md.tmpl').is_file()}")
     print("Hook 注册点：未注册（v3 第一阶段 Codex/Claude Turn Protocol 为 contract-only）")
     print("Check 解释器：必须由 harnessctl 将 manifest 的 python 令牌解析为 sys.executable；不支持直接执行 manifest command")
+    print("Check 隔离：Python 写入拦截 + 仓库范围指纹；操作系统级只读隔离尚未实现")
     print("Checks：" + json.dumps(checks, ensure_ascii=False))
     print("注册测试：" + json.dumps(registered_tests, ensure_ascii=False))
     print("Requirements 覆盖：" + json.dumps(requirements_coverage, ensure_ascii=False))
+    print("Source provenance：" + json.dumps(source_provenance, ensure_ascii=False, sort_keys=True))
     for item in capability_report(configs) if configs else []:
         print(f"能力 {item['id']}：{item['enforcement']} / {item['evidence']}")
     print("真实双运行时新会话证据：未验证")
@@ -1125,6 +1415,11 @@ def run_doctor(root: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(prog="harnessctl")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument(
+        "--allow-unverified-provenance",
+        action="store_true",
+        help="仅用于无 Git 元数据的诊断/测试；该模式永远不能获得 Candidate 或 Stable 资格",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("validate")
     assemble = subparsers.add_parser("assemble")
@@ -1137,12 +1432,12 @@ def main() -> int:
     root = args.root.resolve()
     try:
         if args.command == "validate":
-            return run_validate(root)
+            return run_validate(root, args.allow_unverified_provenance)
         if args.command == "assemble":
-            return run_assemble(root, args.check)
+            return run_assemble(root, args.check, args.allow_unverified_provenance)
         if args.command == "health":
-            return run_health(root, args.as_json, args.allow_unhealthy)
-        return run_doctor(root)
+            return run_health(root, args.as_json, args.allow_unhealthy, args.allow_unverified_provenance)
+        return run_doctor(root, args.allow_unverified_provenance)
     except HarnessError as exc:
         print(f"harnessctl 失败：{exc}", file=sys.stderr)
         return 1
