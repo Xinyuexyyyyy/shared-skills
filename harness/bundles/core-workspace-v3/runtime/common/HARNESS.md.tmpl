@@ -1,0 +1,6 @@
+# Harness v3
+
+读取 bundle manifest，再按其 `configs` 顺序读取配置。
+运行时能力以 `config/capabilities.yaml` 的 enforcement 分类为准。
+`contract-only`、`eval-only` 和 `unverified` 不得表述为硬执行。
+真实 memory、会话、凭证、设备状态和日志不属于本 bundle。

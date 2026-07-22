@@ -1,0 +1,22 @@
+schema_version: "1"
+kind: test-registry
+tests:
+  - id: v3-schema-regressions
+    path: tests/test_harnessctl.py
+    selectors:
+      - HarnessCtlTests.test_invalid_nested_policy_boolean_fails_schema
+    capabilities:
+      - configuration-schema-validation
+  - id: v3-assembly-regressions
+    path: tests/test_harnessctl.py
+    selectors:
+      - HarnessCtlTests.test_two_assemblies_are_deterministic
+    capabilities:
+      - deterministic-assembly
+  - id: v3-policy-regressions
+    path: tests/test_harnessctl.py
+    selectors:
+      - HarnessCtlTests.test_entry_budget_hard_limit_fails
+      - HarnessCtlTests.test_manifest_validation_direct
+    capabilities:
+      - manifest-and-budget-validation

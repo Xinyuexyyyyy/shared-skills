@@ -1,0 +1,10 @@
+{
+  "fixture_kind": "synthetic",
+  "task_mode": "analysis",
+  "gap_owner": "method",
+  "resolution": "continue",
+  "risk": "low",
+  "write_scope": "none",
+  "verification_required": false,
+  "status": "resolved"
+}

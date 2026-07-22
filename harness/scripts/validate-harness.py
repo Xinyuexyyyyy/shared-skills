@@ -192,13 +192,23 @@ def validate_bundle(bundle_dir: Path, expected_id: str | None = None, expected_v
         declared.add(normalized_value)
 
     workflow = manifest.get("workflow")
-    if workflow is not None:
+    if workflow is not None and bundle_id != "core-workspace-v3":
         if not isinstance(workflow, dict):
             fail(f"workflow must be a mapping: {manifest_path}")
         require_id(require(workflow, "id", manifest_path), "workflow id")
         require_version(require(workflow, "version", manifest_path), "workflow")
         if require(workflow, "stages", manifest_path) != WORKFLOW_STAGES:
             fail(f"workflow stages or order do not match the contract: {manifest_path}")
+    elif bundle_id == "core-workspace-v3":
+        if manifest.get("profile") != "core-workspace-v3":
+            fail(f"v3 bundle profile is missing: {manifest_path}")
+        v3_workflow = workflow or {}
+        states = v3_workflow.get("states")
+        if not isinstance(states, list) or len(states) < 12 or len(states) != len(set(states)):
+            fail(f"v3 workflow states are invalid: {manifest_path}")
+        source_identity = manifest.get("source_identity")
+        if not isinstance(source_identity, dict) or not all(source_identity.get(key) for key in ("base_commit", "ref", "assembly_sha256")):
+            fail(f"v3 source identity is incomplete: {manifest_path}")
 
     runtime_adapters = manifest.get("runtime_adapters")
     if runtime_adapters is not None:

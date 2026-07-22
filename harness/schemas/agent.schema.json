@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": ["schema_version", "kind", "role", "default_language", "behavior", "owned_rules"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "kind": {"const": "agent-config"},
+    "role": {"type": "string", "minLength": 1},
+    "default_language": {"type": "string", "minLength": 2},
+    "behavior": {
+      "type": "object",
+      "required": ["scope", "user_ownership", "evolution"],
+      "properties": {
+        "scope": {"const": "workspace-only"},
+        "user_ownership": {"type": "array", "minItems": 4, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "evolution": {
+          "type": "object",
+          "required": ["candidates_require_tests", "direct_rule_mutation"],
+          "properties": {
+            "candidates_require_tests": {"const": true},
+            "direct_rule_mutation": {"const": false}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "owned_rules": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "agent"}}, "additionalProperties": false}}
+  },
+  "additionalProperties": false
+}

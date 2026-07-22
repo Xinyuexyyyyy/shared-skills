@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "required": ["schema_version", "kind", "permissions", "release", "budgets", "owned_rules"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "kind": {"const": "policy-config"},
+    "permissions": {
+      "type": "object",
+      "required": ["writes_require_confirmed_scope", "dangerous_actions_require_authority", "irreversible_actions_require_authority"],
+      "properties": {"writes_require_confirmed_scope": {"const": true}, "dangerous_actions_require_authority": {"const": true}, "irreversible_actions_require_authority": {"const": true}},
+      "additionalProperties": false
+    },
+    "release": {
+      "type": "object",
+      "required": ["candidate_requires_static_tests", "stable_requires_dual_runtime_evidence", "rollback_target"],
+      "properties": {"candidate_requires_static_tests": {"const": true}, "stable_requires_dual_runtime_evidence": {"const": true}, "rollback_target": {"const": "core-workspace-v2@0.1.0+draft"}},
+      "additionalProperties": false
+    },
+    "budgets": {
+      "type": "object",
+      "required": ["agents_entry", "claude_entry", "harness_entry", "always_on", "memory_index", "memory_topic", "core_yaml_each", "core_yaml_total", "method_card", "builtin_skill"],
+      "properties": {
+        "agents_entry": {"$ref": "#/$defs/budget"},
+        "claude_entry": {"$ref": "#/$defs/budget"},
+        "harness_entry": {"$ref": "#/$defs/budget"},
+        "always_on": {"$ref": "#/$defs/budget"},
+        "memory_index": {"$ref": "#/$defs/budget"},
+        "memory_topic": {"$ref": "#/$defs/budget"},
+        "core_yaml_each": {"$ref": "#/$defs/budget"},
+        "core_yaml_total": {"$ref": "#/$defs/budget"},
+        "method_card": {"$ref": "#/$defs/budget"},
+        "builtin_skill": {"$ref": "#/$defs/budget"}
+      },
+      "additionalProperties": false
+    },
+    "owned_rules": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "policy"}}, "additionalProperties": false}}
+  },
+  "$defs": {
+    "budget": {
+      "type": "object",
+      "required": ["warning_lines", "hard_lines", "warning_bytes", "hard_bytes"],
+      "properties": {"warning_lines": {"type": "integer", "minimum": 0}, "hard_lines": {"type": "integer", "minimum": 0}, "warning_bytes": {"type": "integer", "minimum": 0}, "hard_bytes": {"type": "integer", "minimum": 0}},
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

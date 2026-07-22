@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": ["schema_version", "kind", "status", "verifier", "runtimes", "attestation", "note"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "kind": {"const": "runtime-evidence"},
+    "status": {"const": "unverified"},
+    "verifier": {"const": "unavailable-in-phase-1"},
+    "runtimes": {
+      "type": "object",
+      "required": ["codex", "claude"],
+      "properties": {
+        "codex": {"type": "object", "required": ["status"], "properties": {"status": {"const": "unverified"}}, "additionalProperties": false},
+        "claude": {"type": "object", "required": ["status"], "properties": {"status": {"const": "unverified"}}, "additionalProperties": false}
+      },
+      "additionalProperties": false
+    },
+    "attestation": {"type": "null"},
+    "note": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": false
+}

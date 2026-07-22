@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "required": ["schema_version", "kind", "states", "initial_state", "terminal_states", "transitions", "turn_envelope", "closeout", "owned_rules"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "kind": {"const": "workflow-config"},
+    "states": {"type": "array", "minItems": 12, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "initial_state": {"const": "input"},
+    "terminal_states": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "transitions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "object", "required": ["from", "to"], "properties": {"from": {"type": "string"}, "to": {"type": "string"}}, "additionalProperties": false}},
+    "turn_envelope": {
+      "type": "object",
+      "required": ["persistence", "schema"],
+      "properties": {
+        "persistence": {"const": "disabled"},
+        "schema": {"const": "schemas/turn-envelope.schema.json"}
+      },
+      "additionalProperties": false
+    },
+    "closeout": {
+      "type": "object",
+      "required": ["required_for", "required"],
+      "properties": {
+        "required_for": {"type": "array", "minItems": 5, "uniqueItems": true, "items": {"type": "string"}},
+        "required": {"type": "array", "minItems": 4, "uniqueItems": true, "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "owned_rules": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "object", "required": ["id", "owner"], "properties": {"id": {"type": "string"}, "owner": {"const": "workflow"}}, "additionalProperties": false}}
+  },
+  "additionalProperties": false
+}

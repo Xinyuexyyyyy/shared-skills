@@ -1,0 +1,17 @@
+schema_version: "1"
+kind: agent-config
+role: workspace-agent
+default_language: zh-CN
+behavior:
+  scope: workspace-only
+  user_ownership:
+    - goals
+    - facts
+    - preferences
+    - tradeoffs
+  evolution:
+    candidates_require_tests: true
+    direct_rule_mutation: false
+owned_rules:
+  - id: agent-role-and-ownership
+    owner: agent
